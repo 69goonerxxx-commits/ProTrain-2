@@ -1,0 +1,72 @@
+</head>
+<body>
+
+<div id="sc-today"  class="screen active"></div>
+<div id="sc-week"   class="screen"></div>
+<div id="sc-cal"    class="screen"></div>
+<div id="sc-prog"   class="screen"></div>
+<div id="sc-guide"  class="screen"></div>
+
+<!-- ONBOARDING -->
+<div class="ob-overlay" id="obOverlay">
+  <div class="ob-logo">⚡</div>
+  <div class="ob-title">ProTrain Program <span style="font-size:14px;opacity:.6">v8</span></div>
+  <div class="ob-sub">Your personal hypertrophy tracker.<br>Built around your home gym setup.</div>
+  <div class="ob-section">
+    <div class="ob-section-title">What is this split?</div>
+    <div class="ob-section-body">Upper / Lower / Push / Pull / Legs — every major muscle group trained twice a week, with two rest days spaced through the week instead of stacked at the end.</div>
+    <div style="margin-top:10px">
+      <div style="font-size:11px;color:#818cf8;font-family:'Barlow Condensed',sans-serif;letter-spacing:2px;text-transform:uppercase;margin-bottom:6px">Re-entry: Weeks 1-2</div>
+      <div class="ob-day"><div class="ob-day-dot" style="background:#f97316"></div><strong>Mon</strong> — Upper + Core</div>
+      <div class="ob-day"><div class="ob-day-dot" style="background:#818cf8"></div><strong>Tue</strong> — Rest</div>
+      <div class="ob-day"><div class="ob-day-dot" style="background:#84cc16"></div><strong>Wed</strong> — Lower</div>
+      <div class="ob-day"><div class="ob-day-dot" style="background:#f97316"></div><strong>Thu</strong> — Push + Core</div>
+      <div class="ob-day"><div class="ob-day-dot" style="background:#818cf8"></div><strong>Fri</strong> — Rest</div>
+      <div class="ob-day"><div class="ob-day-dot" style="background:#22d3ee"></div><strong>Sat</strong> — Pull</div>
+      <div class="ob-day"><div class="ob-day-dot" style="background:#818cf8"></div><strong>Sun</strong> — Rest</div>
+    </div>
+    <div style="margin-top:10px">
+      <div style="font-size:11px;color:#22d3ee;font-family:'Barlow Condensed',sans-serif;letter-spacing:2px;text-transform:uppercase;margin-bottom:6px">Full Program: Week 3+</div>
+      <div class="ob-day"><div class="ob-day-dot" style="background:#f97316"></div><strong>Mon</strong> — Upper + Core</div>
+      <div class="ob-day"><div class="ob-day-dot" style="background:#84cc16"></div><strong>Tue</strong> — Lower</div>
+      <div class="ob-day"><div class="ob-day-dot" style="background:#818cf8"></div><strong>Wed</strong> — Rest</div>
+      <div class="ob-day"><div class="ob-day-dot" style="background:#f97316"></div><strong>Thu</strong> — Push + Core</div>
+      <div class="ob-day"><div class="ob-day-dot" style="background:#22d3ee"></div><strong>Fri</strong> — Pull</div>
+      <div class="ob-day"><div class="ob-day-dot" style="background:#84cc16"></div><strong>Sat</strong> — Legs</div>
+      <div class="ob-day"><div class="ob-day-dot" style="background:#818cf8"></div><strong>Sun</strong> — Rest</div>
+    </div>
+  </div>
+  <div class="ob-section">
+    <div class="ob-section-title">Set Your Program Start Date</div>
+    <div class="ob-section-body">Your program runs on a repeating 10-week cycle: 4 weeks building up, a deload week, then a step-loading block (consolidate, climb, consolidate, climb), and a second deload before the next cycle begins — each cycle starting a little higher than the last. Pick the date you're starting below and the app tracks the rest.</div>
+    <input class="ob-start-input" type="date" id="obStartDate">
+  </div>
+  <div class="ob-section">
+    <div class="ob-section-title">Equipment Used</div>
+    <div class="ob-section-body">Dumbbells &nbsp;·&nbsp; Resistance Bands &nbsp;·&nbsp; Pull-up Bar &nbsp;·&nbsp; EZ Curl Bar<br>All exercises are tailored to these.</div>
+  </div>
+  <button class="ob-btn" onclick="finishOnboarding()">Let's Go! 💪</button>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <div class="modal-handle"></div>
+    <div class="modal-hdr">
+      <div class="modal-title" id="mTitle">Log</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button id="copyLastBtn" onclick="copyLastSession()" style="display:none;font-size:11px;padding:5px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;cursor:pointer">📋 COPY LAST</button>
+        <button class="modal-x" onclick="closeModal()" aria-label="Close">&times;</button>
+      </div>
+    </div>
+    <div id="mBody"></div>
+  </div>
+</div>
+
+<nav class="bnav" aria-label="Main">
+  <button class="nbtn active" onclick="go('today',this)"><span>&#9728;&#65039;</span>Today</button>
+  <button class="nbtn" onclick="go('week',this)"><span>&#128197;</span>Week</button>
+  <button class="nbtn" onclick="go('cal',this)"><span>&#128467;&#65039;</span>Calendar</button>
+  <button class="nbtn" onclick="go('prog',this)"><span>&#128200;</span>Progress</button>
+  <button class="nbtn" onclick="go('guide',this)"><span>&#128214;</span>Guide</button>
+</nav>
+

@@ -1,0 +1,17 @@
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js');
+  }
+(function(){
+  var ok=true;
+  try{localStorage.setItem('__pt_t','1');localStorage.removeItem('__pt_t');}catch(e){ok=false;}
+  if(ok)return;
+  var b=document.createElement('div');
+  b.setAttribute('role','alert');
+  b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;padding:10px 14px;background:#7f1d1d;color:#fff;font-size:13px;text-align:center';
+  b.textContent='Storage is blocked in this browser, so nothing you log will be saved. Open ProTrain from a web address (https) instead of from a file.';
+  document.body.appendChild(b);
+})();
+</script>
+</body>
+</html>

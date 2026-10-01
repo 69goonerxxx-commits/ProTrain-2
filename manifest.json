@@ -1,7 +1,7 @@
 {
   "name": "ProTrain Program",
   "short_name": "ProTrain",
-  "description": "Your personal hypertrophy tracker",
+  "description": "Your personal PPL workout tracker",
   "start_url": ".",
   "display": "standalone",
   "orientation": "portrait",

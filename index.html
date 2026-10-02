@@ -58,6 +58,10 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;disp
 .cyc-fields{display:flex;gap:6px;margin-left:auto}
 .cyc-fields input{width:52px;padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;text-align:center}
 .cyc-remove-btn{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--danger);cursor:pointer;font-size:12px;flex-shrink:0}
+.walk-note{font-size:11px;color:var(--muted);margin-top:6px}
+.walk-bar{height:6px;background:var(--surface2);border-radius:3px;margin-top:8px;overflow:hidden}
+.walk-bar>div{height:100%;background:var(--legs);border-radius:3px}
+.walk-goal-btn{background:none;border:none;padding:0;color:var(--morning);font-size:11px;text-decoration:underline;cursor:pointer}
 .cyc-add-btn{width:100%;margin-top:6px;padding:8px;border-radius:8px;border:1px dashed var(--border);background:transparent;color:var(--muted);font-size:12px;cursor:pointer}
 .scard-hdr{padding:14px 16px;display:flex;align-items:center;gap:12px;cursor:pointer}
 .scard-icon{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
@@ -548,6 +552,13 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;disp
 /* accessibility */
 button:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:2px solid #fbbf24;outline-offset:2px}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+
+.plan-banner{margin:10px 20px 0;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--morning);border-radius:12px}
+.pb-title{font-weight:700;font-size:14px}
+.pb-sub{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.4}
+.pb-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.pb-actions button{padding:8px 12px;border-radius:8px;border:1px solid var(--morning);background:transparent;color:var(--morning);font-size:12px;font-weight:600}
+.pb-actions button.pb-quiet{border-color:var(--border);color:var(--muted)}
 </style>
 </head>
 <body>
@@ -622,18 +633,41 @@ button:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:2px so
 </nav>
 
 <script>
+'use strict';
 // Exercise ids are permanent keys (the day is looked up from the EX arrays, never parsed from the id).
 // If you ever must rename an id, add  oldId:'newId'  here and existing history follows it automatically.
 var ID_ALIASES={};
 var SCHED_REENTRY={0:null,1:'d1',2:null,3:'d2',4:'d3',5:null,6:'d4'};
 var SCHED_FULL={0:null,1:'d1',2:'d2',3:null,4:'d3',5:'d4',6:'d5'};
+var SCHED_PAUSED={0:null,1:null,2:null,3:null,4:null,5:null,6:null};
+function dnum(d){return Math.round(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())/864e5);}
+function getPauses(){try{var a=JSON.parse(localStorage.getItem('pt_pauses')||'[]');return Array.isArray(a)?a:[];}catch(e){return[];}}
+function savePauses(a){localStorage.setItem('pt_pauses',JSON.stringify(a));}
+function pausedDaysBefore(d){
+  var start=localStorage.getItem('pt_program_start');if(!start)return 0;
+  var sN=dnum(new Date(start+'T00:00:00')),dN=dnum(d),tot=0;
+  getPauses().forEach(function(p){
+    var a=Math.max(dnum(new Date(p[0]+'T00:00:00')),sN);
+    var b=p[1]?dnum(new Date(p[1]+'T00:00:00')):dN-1;
+    b=Math.min(b,dN-1);
+    if(b>=a)tot+=b-a+1;
+  });
+  return tot;
+}
+function isPausedDate(d){
+  var dN=dnum(d),hit=false;
+  getPauses().forEach(function(p){
+    var a=dnum(new Date(p[0]+'T00:00:00')),b=p[1]?dnum(new Date(p[1]+'T00:00:00')):1e9;
+    if(dN>=a&&dN<=b)hit=true;
+  });
+  return hit;
+}
 function getScheduleFor(d){
   var start=localStorage.getItem('pt_program_start');
   if(!start)return SCHED_FULL;
-  var startDate=new Date(start+'T00:00:00');
-  var t=new Date(d||new Date());
-  t.setHours(0,0,0,0);
-  var diffDays=Math.round((t-startDate)/(1000*60*60*24));
+  var t=new Date(d||new Date());t.setHours(0,0,0,0);
+  if(isPausedDate(t))return SCHED_PAUSED;
+  var diffDays=dnum(t)-dnum(new Date(start+'T00:00:00'))-pausedDaysBefore(t);
   return (diffDays>=0&&diffDays<14)?SCHED_REENTRY:SCHED_FULL;
 }
 function getCurrentSchedule(){return getScheduleFor(new Date());}
@@ -675,7 +709,7 @@ var EX={
       tip:'Passive hold — let gravity do the work. Bend the knees as much as needed, the goal is to release, not to touch your toes.'},
   ],
   d1:[
-    {id:'d1_fep',loadable:true,name:'Feet-Elevated Push-ups',type:'reps',target:'4x8-15',sets:4,tag:'Compound',rest:'60-90 sec',muscles:{primary:'Chest (Upper)',secondary:'Front Delts, Triceps'},
+    {id:'d1_fep',loadable:true,bwFactor:0.7,name:'Feet-Elevated Push-ups',type:'reps',target:'4x8-15',sets:4,tag:'Compound',rest:'60-90 sec',muscles:{primary:'Chest (Upper)',secondary:'Front Delts, Triceps'},
       steps:['Place feet on a chair or step, hands on the floor slightly wider than shoulder-width.','Lower your chest toward the floor, elbows at about 45 degrees.','Push back up to full extension.','Keep your body in a straight line from shoulders to heels — no sagging hips.'],
       tip:'The elevated feet shift more load onto the upper chest and front delts than a flat push-up — your main chest-builder for the day with no bench available.'},
     {id:'d1_csr',name:'Chest-Supported DB Row',type:'weighted',target:'4x8-12',sets:4,tag:'Compound',rest:'2-3 min',muscles:{primary:'Lats',secondary:'Mid Back, Biceps'},
@@ -684,30 +718,18 @@ var EX={
     {id:'d1_dsp',name:'DB Standing Shoulder Press',type:'weighted',target:'3x8-12',sets:3,tag:'Compound',rest:'2-3 min',muscles:{primary:'Front Delts',secondary:'Side Delts, Triceps'},
       steps:['Stand holding DBs at shoulder height, palms facing forward, feet shoulder-width apart.','Press both DBs straight overhead until arms are fully extended.','Lower back to shoulder height with control.','Keep your core braced throughout — don\'t arch your lower back to help the press.'],
       tip:'Standing recruits the core as a stabilizer the way a seated press never does — more carryover for a home setup with no bench. Path stays straight overhead, not forward.'},
-    {id:'d1_dlr',name:'DB Lateral Raises',type:'weighted',target:'3x12-15',sets:3,tag:'Isolation',rest:'60-90 sec',muscles:{primary:'Side Delts',secondary:'—'},
+    {id:'d1_dlr',name:'DB Lateral Raises',type:'weighted',target:'4x12-15',sets:4,tag:'Isolation',rest:'60-90 sec',muscles:{primary:'Side Delts',secondary:'—'},
       steps:['Stand with DBs hanging at your sides, slight bend in your elbows.','Raise both arms out to the sides until they reach shoulder height.','Lead with your elbows, not your wrists.','Lower slowly over 2-3 seconds without swinging.'],
       tip:'Second side-delt session of the week (the Push day is the first). Side delts respond to frequency, so keep this lighter and strict rather than heavy.'},
     {id:'d1_bcf',isBand:true,name:'Standing Band Chest Fly',type:'reps',target:'3x12-15',sets:3,tag:'Isolation',rest:'60-90 sec',muscles:{primary:'Chest',secondary:'Front Delts'},
       steps:['Anchor a band behind you at chest height, hold one end in each hand.','Step forward until there is tension, arms out to your sides, slight bend in elbows.','Bring your hands together in front of your chest in a wide arc.','Squeeze your chest at the front, then return with control.'],
       tip:'Standing removes the range-of-motion ceiling a floor fly runs into — you get the full stretch position at the back of the movement that push-ups and floor presses can\'t reach.'},
-    {id:'d1_pul',loadable:true,name:'Pull-ups',type:'reps',target:'3x6-12',sets:3,tag:'Compound',rest:'2-3 min',muscles:{primary:'Lats',secondary:'Biceps, Upper Back'},
+    {id:'d1_pul',loadable:true,bwFactor:1,name:'Pull-ups',type:'reps',target:'3x6-12',sets:3,tag:'Compound',rest:'2-3 min',muscles:{primary:'Lats',secondary:'Biceps, Upper Back'},
       steps:['Grip the bar slightly wider than shoulder-width, palms facing away.','Pull yourself up until your chin clears the bar.','Lower yourself with control to a full dead hang.','Avoid swinging — the movement should be strict.'],
       tip:'First pull-up session of the week — trained again on your Pull day for 2x/week frequency. Prioritize full range over rep count; a controlled half-set beats a swinging full one.'},
-    {id:'d1_brf',isBand:true,name:'Band Reverse Fly',type:'reps',target:'3x15-20',sets:3,tag:'Isolation',rest:'60-90 sec',muscles:{primary:'Rear Delts',secondary:'Traps, Rhomboids'},
+    {id:'d1_brf',isBand:true,name:'Band Reverse Fly',type:'reps',target:'4x15-20',sets:4,tag:'Isolation',rest:'60-90 sec',muscles:{primary:'Rear Delts',secondary:'Traps, Rhomboids'},
       steps:['Anchor the band at chest height. Hold an end in each hand, arms extended forward.','With a slight elbow bend, pull the band apart by moving your arms out to the sides.','Squeeze your shoulder blades together at the end.','Return slowly without letting the band snap back.'],
       tip:'Rear delts get a second weekly session here (Pull day is the first). Upper days are pressing-heavy, so this balances the shoulder.'},
-    {id:'d1_ezc',name:'EZ Bar Curls',type:'weighted',target:'3x10-15',sets:3,tag:'Isolation',rest:'60-90 sec',muscles:{primary:'Biceps',secondary:'Brachialis, Forearms'},
-      steps:['Stand holding the EZ bar at the angled grips, palms facing upward at an angle.','Keep elbows pinned at your sides throughout the movement.','Curl the bar up toward your shoulders in a smooth arc.','Squeeze at the top, then lower slowly to full extension.'],
-      tip:'The angled grip reduces wrist strain compared to a straight bar. Full extension at the bottom before each rep for maximum range of motion.'},
-    {id:'d1_ote',name:'Overhead DB Tricep Extension',type:'weighted',target:'3x10-15',sets:3,tag:'Isolation',rest:'60-90 sec',muscles:{primary:'Triceps (Long Head)',secondary:'Shoulders'},
-      steps:['Sit or stand holding one DB with both hands, arms extended straight overhead.','Keeping your upper arms close to your ears, bend your elbows to lower the DB behind your head.','Lower until you feel a full stretch in the triceps.','Press back up to full extension, squeezing the triceps at the top.'],
-      tip:'The overhead position stretches the long head of the triceps under load — a range pushdowns and push-ups never reach, since your elbows stay pinned at your sides for those.'},
-    {id:'d1_hlr',name:'Hanging Leg Raises',type:'reps',target:'3x10-15',sets:3,tag:'Core',rest:'60 sec',muscles:{primary:'Lower Abs',secondary:'Hip Flexors, Grip'},
-      steps:['Hang from the pull-up bar with both hands shoulder-width apart, arms fully extended.','Keeping legs straight, raise them until they are parallel to the floor or higher.','Hold briefly at the top, squeezing your abs.','Lower slowly — do not swing or use momentum.'],
-      tip:'Trained twice a week (again on your Push day) — the anti-flexion demand here is genuinely loaded ab work, not just bracing that comes along for free during compounds.'},
-    {id:'d1_brt',isBand:true,name:'Band Russian Twist',type:'reps',target:'3x15 each side',sets:3,tag:'Core',rest:'60 sec',muscles:{primary:'Obliques',secondary:'Core'},
-      steps:['Anchor a band at your side at about chest height. Sit on the floor facing perpendicular to the anchor, knees bent.','Hold both ends of the band with both hands, arms extended in front of you.','Rotate your torso away from the anchor, then back through center to the other side — that\'s one rep.','Keep the movement controlled, driven from your core rather than your arms.'],
-      tip:'This covers the rotational plane the rest of the day\'s pressing and rowing doesn\'t train directly — obliques respond to loaded rotation, not just isometric bracing.'},
   ],
   d2:[
     {id:'d2_gbs',name:'DB Goblet Squat',type:'weighted',target:'4x8-12',sets:4,tag:'Compound',rest:'2-3 min',muscles:{primary:'Quads',secondary:'Glutes, Core'},
@@ -725,9 +747,12 @@ var EX={
     {id:'d2_dcr',name:'DB Calf Raises',type:'weighted',target:'4x12-20',sets:4,tag:'Isolation',rest:'60-90 sec',muscles:{primary:'Calves (Gastrocnemius)',secondary:'Soleus'},
       steps:['Stand holding DBs at your sides, feet hip-width apart, toes pointing forward.','Rise up onto your toes as high as possible.','Hold for 1 second at the top, then lower your heels all the way back down.','For extra range, stand with the balls of your feet on a step or book.'],
       tip:'Calves respond well to frequency and high reps — full range matters more than load here, so don\'t sacrifice the bottom stretch for extra weight.'},
+    {id:'d1_hlr',name:'Hanging Leg Raises',type:'reps',target:'3x10-15',sets:3,tag:'Core',rest:'60 sec',muscles:{primary:'Lower Abs',secondary:'Hip Flexors, Grip'},
+      steps:['Hang from the pull-up bar with both hands shoulder-width apart, arms fully extended.','Keeping legs straight, raise them until they are parallel to the floor or higher.','Hold briefly at the top, squeezing your abs.','Lower slowly — do not swing or use momentum.'],
+      tip:'Core is trained on four days a week. The anti-flexion demand here is genuinely loaded ab work, not just bracing that comes along for free during compounds.'},
   ],
   d3:[
-    {id:'d3_pup',loadable:true,name:'Standard Push-ups',type:'reps',target:'4x8-15',sets:4,tag:'Compound',rest:'60-90 sec',muscles:{primary:'Chest',secondary:'Triceps, Front Delts'},
+    {id:'d3_pup',loadable:true,bwFactor:0.64,name:'Standard Push-ups',type:'reps',target:'4x8-15',sets:4,tag:'Compound',rest:'60-90 sec',muscles:{primary:'Chest',secondary:'Triceps, Front Delts'},
       steps:['Hands slightly wider than shoulder-width, body in a straight line.','Lower your chest to the floor, elbows at about 45 degrees.','Push back up to start.','Breathe in on the way down, out on the way up.'],
       tip:'Full-range flat pressing to complement the Upper day\'s feet-elevated version — between the two, chest gets trained through both a flat and an upper-emphasis angle across the week.'},
     {id:'d3_dff',name:'DB Floor Fly',type:'weighted',target:'3x12-15',sets:3,tag:'Isolation',rest:'60-90 sec',muscles:{primary:'Chest (Inner)',secondary:'Front Delts'},
@@ -736,7 +761,7 @@ var EX={
     {id:'d3_dsp',name:'DB Standing Shoulder Press',type:'weighted',target:'3x8-12',sets:3,tag:'Compound',rest:'2-3 min',muscles:{primary:'Front Delts',secondary:'Side Delts, Triceps'},
       steps:['Stand holding DBs at shoulder height, palms facing forward, feet shoulder-width apart.','Press both DBs straight overhead until arms are fully extended.','Lower back to shoulder height with control.','Keep your core braced throughout — don\'t arch your lower back to help the press.'],
       tip:'Second shoulder-press touch of the week — same movement as your Upper day, spaced far enough apart to recover fully between sessions.'},
-    {id:'d3_dlr',name:'DB Lateral Raises',type:'weighted',target:'3x12-15',sets:3,tag:'Isolation',rest:'60-90 sec',muscles:{primary:'Side Delts',secondary:'—'},
+    {id:'d3_dlr',name:'DB Lateral Raises',type:'weighted',target:'4x12-15',sets:4,tag:'Isolation',rest:'60-90 sec',muscles:{primary:'Side Delts',secondary:'—'},
       steps:['Stand with DBs hanging at your sides, slight bend in your elbows.','Raise both arms out to the sides until they reach shoulder height.','Lead with your elbows, not your wrists. Pinky slightly higher than thumb.','Lower slowly — the descent matters as much as the lift.'],
       tip:'Side delts are stubborn and respond well to frequency — use a weight light enough to keep strict form through the full set rather than swinging up heavier ones.'},
     {id:'d3_dsc',name:'DB Skull Crushers (Neutral Grip)',type:'weighted',target:'3x10-15',sets:3,tag:'Isolation',rest:'60-90 sec',muscles:{primary:'Triceps (All Heads)',secondary:'—'},
@@ -753,7 +778,7 @@ var EX={
       tip:'Covers the anti-lateral-flexion plane that plank and rotational core work don\'t touch — the most commonly skipped angle in home ab training.'},
   ],
   d4:[
-    {id:'d4_pul',loadable:true,name:'Pull-ups',type:'reps',target:'4x6-12',sets:4,tag:'Compound',rest:'2-3 min',muscles:{primary:'Lats',secondary:'Biceps, Upper Back'},
+    {id:'d4_pul',loadable:true,bwFactor:1,name:'Pull-ups',type:'reps',target:'4x6-12',sets:4,tag:'Compound',rest:'2-3 min',muscles:{primary:'Lats',secondary:'Biceps, Upper Back'},
       steps:['Grip the bar slightly wider than shoulder-width, palms facing away.','Pull yourself up until your chin clears the bar.','Lower yourself with control to a full dead hang.','Avoid swinging — the movement should be strict.'],
       tip:'Second pull-up session of the week, paired with your Upper day — add 1 clean rep per set once every rep is fully controlled, and compare the two sessions to track weekly progress.'},
     {id:'d4_sar',name:'Single-Arm DB Row',type:'weighted',target:'4x8-12',sets:4,tag:'Compound',rest:'2-3 min',muscles:{primary:'Lats, Mid Back',secondary:'Biceps, Rear Delts'},
@@ -762,18 +787,21 @@ var EX={
     {id:'d4_blp',isBand:true,name:'Band Lat Pulldown (Kneeling)',type:'reps',target:'3x12-15',sets:3,tag:'Isolation',rest:'60-90 sec',muscles:{primary:'Lats',secondary:'Biceps'},
       steps:['Kneel facing a high anchor point, band gripped with both hands overhead.','Pull the band down toward your chest, elbows driving down and back.','Squeeze your lats at the bottom.','Let the band return you to full overhead extension with control.'],
       tip:'A bent-arm lat pattern, closer to a machine lat pulldown than a straight-arm pullover — a genuinely different stimulus from the same anchor point.'},
-    {id:'d4_brf',isBand:true,name:'Band Reverse Fly',type:'reps',target:'3x12-15',sets:3,tag:'Isolation',rest:'60-90 sec',muscles:{primary:'Rear Delts',secondary:'Traps, Rhomboids'},
+    {id:'d4_brf',isBand:true,name:'Band Reverse Fly',type:'reps',target:'4x12-15',sets:4,tag:'Isolation',rest:'60-90 sec',muscles:{primary:'Rear Delts',secondary:'Traps, Rhomboids'},
       steps:['Anchor the band at chest height. Hold an end in each hand, arms extended forward.','With arms straight and a slight elbow bend, pull the band apart by moving your arms out to the sides.','Squeeze your shoulder blades together at the end.','Slowly return your arms to center.'],
       tip:'Rear delts and mid-traps are small muscles that punch above their weight for shoulder health and posture — worth training even though they\'re easy to skip.'},
-    {id:'d4_shr',name:'DB Shrugs',type:'weighted',target:'3x12-15',sets:3,tag:'Isolation',rest:'60-90 sec',muscles:{primary:'Traps',secondary:'Forearms'},
+    {id:'d4_lsl',name:'Leaning DB Lateral Raise',type:'weighted',target:'3x12-15',sets:3,tag:'Isolation',rest:'60-90 sec',muscles:{primary:'Side Delts',secondary:'Traps'},
+      steps:['Hold a DB in one hand and lean away from a wall or doorframe, holding it with your free hand.','Raise the DB out to the side to shoulder height, leading with your elbow.','Lower slowly over 2-3 seconds.','Finish your reps, then switch sides.'],
+      tip:'Leaning away lengthens the line of pull so the side delt works hardest at the bottom. Third weekly side-delt session, so keep it light and strict.'},
+    {id:'d4_shr',name:'DB Shrugs',type:'weighted',target:'4x12-15',sets:4,tag:'Isolation',rest:'60-90 sec',muscles:{primary:'Traps',secondary:'Forearms'},
       steps:['Stand holding a DB in each hand at your sides, arms straight.','Lift your shoulders straight up toward your ears.','Hold 1 second at the top.','Lower slowly to a full stretch. No rolling, no bouncing.'],
       tip:'Upper traps get almost no direct work elsewhere. Straight up and down, and use the full lowering range.'},
+    {id:'d1_ezc',name:'EZ Bar Curls',type:'weighted',target:'3x10-15',sets:3,tag:'Isolation',rest:'60-90 sec',muscles:{primary:'Biceps',secondary:'Brachialis, Forearms'},
+      steps:['Stand holding the EZ bar at the angled grips, palms facing upward at an angle.','Keep elbows pinned at your sides throughout the movement.','Curl the bar up toward your shoulders in a smooth arc.','Squeeze at the top, then lower slowly to full extension.'],
+      tip:'The angled grip reduces wrist strain compared to a straight bar. Full extension at the bottom before each rep for maximum range of motion.'},
     {id:'d4_dhc',name:'DB Hammer Curls',type:'weighted',target:'3x10-15',sets:3,tag:'Isolation',rest:'60-90 sec',muscles:{primary:'Brachialis',secondary:'Biceps, Forearms'},
       steps:['Stand holding DBs at your sides, palms facing each other (neutral grip).','Curl both DBs up keeping the neutral hammer grip throughout.','Squeeze at the top, lower slowly back down.','Do not rotate your wrists during the movement.'],
-      tip:'The neutral grip shifts emphasis onto the brachialis, underneath the biceps — a different angle than the Upper day\'s supinated curl, so arms get two distinct stimuli across the week.'},
-    {id:'d4_bfp',isBand:true,name:'Band Face Pulls',type:'reps',target:'3x15-20',sets:3,tag:'Isolation',rest:'60-90 sec',muscles:{primary:'Rear Delts',secondary:'Traps, Rotator Cuff'},
-      steps:['Anchor band at face or eye height. Grip ends with both hands, palms facing down.','Pull the band toward your face, driving elbows back and out to the sides.','At peak, hands should be beside your ears, elbows high.','Slowly extend back to start.'],
-      tip:'Excellent for shoulder health and posture, especially with all the pressing volume elsewhere in the week. Slow and controlled always.'},
+      tip:'The neutral grip shifts emphasis onto the brachialis, underneath the biceps — a different angle than the EZ bar curl, so your biceps get two distinct stimuli in one session.'},
   ],
   d5:[
     {id:'d5_dss',name:'DB Sumo Squats',type:'weighted',target:'4x10-15',sets:4,tag:'Compound',rest:'2-3 min',muscles:{primary:'Quads, Adductors',secondary:'Glutes'},
@@ -791,6 +819,9 @@ var EX={
     {id:'d5_ecr',name:'Elevated Calf Raise',type:'reps',target:'4x15-20',sets:4,tag:'Isolation',rest:'60-90 sec',muscles:{primary:'Calves (Full Range)',secondary:'Soleus'},
       steps:['Stand with the balls of both feet on a step, book, or ledge, heels hanging off the edge.','Lower your heels as far as possible for a deep stretch.','Rise up onto your toes as high as possible, pausing at the top.','Hold a DB in each hand once bodyweight alone becomes too easy.'],
       tip:'The extra range from the heel drop makes this more effective than flat-floor raises — full range matters more here than added weight.'},
+    {id:'d1_brt',isBand:true,name:'Band Russian Twist',type:'reps',target:'3x15 each side',sets:3,tag:'Core',rest:'60 sec',muscles:{primary:'Obliques',secondary:'Core'},
+      steps:['Anchor a band at your side at about chest height. Sit on the floor facing perpendicular to the anchor, knees bent.','Hold both ends of the band with both hands, arms extended in front of you.','Rotate your torso away from the anchor, then back through center to the other side — that\'s one rep.','Keep the movement controlled, driven from your core rather than your arms.'],
+      tip:'This covers the rotational plane that squats, lunges and bridges don\'t train directly — obliques respond to loaded rotation, not just isometric bracing.'},
   ],
 };
 
@@ -823,18 +854,18 @@ var MUSCLE_GROUPS={
 };
 var MUSCLE_TARGET={
   morning:{p:['lat','glute','core'],s:['rear_delt','upper_back','forearm']},
-  d1:{p:['chest','upper_back','lat','front_delt','side_delt','bicep','tricep'],s:['rear_delt','core','oblique']},
+  d1:{p:['chest','upper_back','lat','front_delt','side_delt'],s:['rear_delt','tricep','bicep']},
   d2:{p:['quad','hamstring','glute','calf'],s:['lower_back','core']},
   d3:{p:['chest','front_delt','side_delt','tricep'],s:['core','oblique']},
-  d4:{p:['lat','upper_back','rear_delt','traps','bicep'],s:['forearm','core']},
-  d5:{p:['quad','hamstring','glute','calf'],s:['lower_back','core']},
+  d4:{p:['lat','upper_back','rear_delt','traps','bicep'],s:['side_delt','forearm','core']},
+  d5:{p:['quad','hamstring','glute','calf'],s:['lower_back','core','oblique']},
 };
 var STARTER_KG={
   d1_csr:10, d1_dsp:8, d1_ezc:8,
   d2_gbs:12, d2_rdl:10, d2_bss:8, d2_hpt:12,
   d3_dff:8, d3_dsp:8, d3_dlr:5, d3_dsc:8,
   d4_sar:10, d4_dhc:8,
-  d1_dlr:5, d4_shr:12, d1_ote:8, d2_dcr:15,
+  d1_dlr:5, d4_shr:12, d4_lsl:4, d2_dcr:15,
   d5_dss:12, d5_slr:8, d5_drl:8,
   _default:8
 };
@@ -879,12 +910,14 @@ function getCycleWeekInfo(d){
     start=keys[0];
   }
   var sd=new Date(start+'T00:00:00');var td=new Date(d);td.setHours(0,0,0,0);
-  var days=Math.floor((td-sd)/(24*60*60*1000));
+  var days=dnum(td)-dnum(sd)-pausedDaysBefore(td); // paused days do not advance the cycle
   if(days<0)return null;
   var totalWeek=Math.floor(days/7);
   var cycleIdx=totalWeek%CYCLE_LENGTH;
   var cycleNum=Math.floor(totalWeek/CYCLE_LENGTH);
   var plan=WEEK_PLAN[cycleIdx];
+  var ov=localStorage.getItem('pt_deload_override');
+  if(ov&&plan.type!=='deload'&&toKey(getMondayOf(td))===ov){plan=WEEK_PLAN[4];return{weekNum:cycleIdx+1,cycleIdx:cycleIdx,cycleNum:cycleNum,totalWeek:totalWeek,type:'deload',sourceOffset:null,plan:plan,startDate:start,override:true};}
   return{weekNum:cycleIdx+1,cycleIdx:cycleIdx,cycleNum:cycleNum,totalWeek:totalWeek,type:plan.type,sourceOffset:plan.sourceOffset||null,plan:plan,startDate:start};
 }
 var PHASES=WEEK_PLAN;
@@ -981,20 +1014,6 @@ var SUBS={
     {id:'d1_ezc_alt5',name:'Doorframe Isometric Curl',muscles:{primary:'Biceps',secondary:'Forearms'},
       steps:['Stand in a doorframe, bend one arm to about 90 degrees, palm up, pressing your fist up against the underside of the frame.','Press upward into the frame as hard as you can, like curling against immovable resistance.','Hold the contraction for 10-15 seconds, breathing steadily.','Switch arms and repeat.'],
       tip:'Honest note: there is no real bodyweight biceps exercise. This isometric technique is a genuine but niche substitute.'}
-  ],
-  d1_ote:[
-    {id:'d1_ote_alt1',name:'Diamond Push-ups',isBand:false,muscles:{primary:'Triceps',secondary:'Chest'},
-      steps:['Place hands close together under chest, thumbs and index fingers forming a diamond.','Lower chest toward hands, keeping elbows close to body.','Push back up to start.','Keep body in a straight line — do not let hips sag.'],
-      tip:'No equipment needed. These hammer the triceps hard.'},
-    {id:'d1_ote_alt2',name:'DB Kickbacks',type:'weighted',isBand:false,muscles:{primary:'Triceps',secondary:'—'},
-      steps:['Hinge forward at the hips, one hand braced on a chair or bench for support.','Hold a DB in the other hand, upper arm pinned against your side, elbow bent 90 degrees.','Extend your arm straight back, squeezing the triceps at full extension.','Bend the elbow to return to start, keeping your upper arm still throughout.'],
-      tip:'Peak contraction happens at full extension behind the body — a different joint angle than overhead extensions.'},
-    {id:'d1_ote_alt3',name:'DB Tate Press',type:'weighted',isBand:false,muscles:{primary:'Triceps (Lateral Head)',secondary:'Chest'},
-      steps:['Lie on the floor, DBs held above chest with palms facing your feet, elbows flared out to the sides.','Bend elbows to lower the DB heads toward your chest, elbows staying flared throughout.','Press back up by straightening the elbows, keeping them wide.','Keep the movement slow and controlled — this is not a fast press.'],
-      tip:'The flared-elbow path hits the triceps\' outer head differently than an overhead extension. Start light — this angle is unfamiliar at first.'},
-    {id:'d1_ote_alt4',name:'Close-Grip Floor Press',type:'weighted',isBand:false,muscles:{primary:'Triceps',secondary:'Chest'},
-      steps:['Lie on the floor, DBs at chest level, elbows tucked close to your ribs.','Press both DBs straight up until arms are fully extended.','Lower slowly, keeping elbows tucked — they should brush your sides, not flare out.','The floor stops the descent at a fixed depth — pause briefly at the bottom.'],
-      tip:'The narrow elbow position biases the triceps far more than a standard press. The floor also removes any temptation to overextend the shoulder.'}
   ],
   d1_hlr:[
     {id:'d1_hlr_alt1',name:'Hanging Knee Raises',muscles:{primary:'Lower Abs',secondary:'Hip Flexors'},
@@ -1288,20 +1307,6 @@ var SUBS={
       steps:['Stand in a doorframe, bend one arm to about 90 degrees, palm up, pressing your fist up against the underside of the frame.','Press upward into the frame as hard as you can, like curling against immovable resistance.','Hold the contraction for 10-15 seconds, breathing steadily.','Switch arms and repeat.'],
       tip:'Honest note: there is no real bodyweight biceps exercise. This isometric technique is a genuine but niche substitute.'}
   ],
-  d4_bfp:[
-    {id:'d4_bfp_alt1',name:'Band Reverse Fly',muscles:{primary:'Rear Delts',secondary:'Traps, Rhomboids'},
-      steps:['Anchor band at chest height. Hold an end in each hand, arms extended forward.','With arms straight and a slight elbow bend, pull the band apart by moving arms out to the sides.','Squeeze shoulder blades together at the end.','Slowly return arms to center.'],
-      tip:'Keep arms at chest height throughout. Same target as face pulls, different angle.'},
-    {id:'d4_bfp_alt2',name:'Prone DB Rear Delt Raise',type:'weighted',isBand:false,muscles:{primary:'Rear Delts',secondary:'Upper Back'},
-      steps:['Lie face down on a bench, bed edge, or elevated surface, arms hanging down.','Raise both DBs out to your sides until arms are roughly parallel to floor.','Hold briefly at the top, squeezing rear delts.','Lower slowly.'],
-      tip:'Use very light weight — rear delts fatigue fast. Focus on the squeeze.'},
-    {id:'d4_bfp_alt3',name:'Wall Slides',isBand:false,muscles:{primary:'Rear Delts, Lower Traps',secondary:'Upper Back'},
-      steps:['Stand with your back against a wall, arms bent in a goalpost position, backs of hands touching the wall.','Slide your arms up overhead, keeping elbows and wrists in contact with the wall as long as possible.','Slide back down to the starting goalpost position.','Keep your lower back flat against the wall throughout.'],
-      tip:'A genuinely different movement pattern — trains the shoulder blades\' upward rotation directly.'},
-    {id:'d4_bfp_alt4',name:'Prone Y-T-W Raises',isBand:false,muscles:{primary:'Rear Delts, Lower Traps',secondary:'Upper Back'},
-      steps:['Lie face-down on the floor or an elevated surface, arms hanging down.','Raise your arms into a Y shape overhead, hold briefly, lower.','Raise your arms into a T shape out to the sides, hold, lower.','Raise your arms into a W shape (elbows bent, squeezing shoulder blades), hold, lower — that\'s one full rep.'],
-      tip:'Cycles through three arm angles in one movement, hitting the full range of scapular stabilizer muscles.'}
-  ],
   d5_dss:[
     {id:'d5_dss_alt1',type:'reps',isBand:true,name:'Band Squat',muscles:{primary:'Quads',secondary:'Glutes, Core'},
       steps:['Stand on resistance band with both feet shoulder-width apart.','Hold the band at shoulder level or crossed over chest.','Squat down keeping chest tall and knees tracking over toes.','Drive through heels to stand, squeezing glutes at top.'],
@@ -1418,12 +1423,16 @@ function _addSub(to,fromKey,name,newId){var src=SUBS[fromKey].find(function(a){r
 _addSub('d1_dsp','d1_fep','Pike Push-ups','d1_dsp_alt6');
 _addSub('d3_dsp','d1_fep','Pike Push-ups','d3_dsp_alt6');
 _addSub('d4_blp','d1_pul','Doorframe/Table Rows','d4_blp_alt6');
+SUBS.d1_hlr.push({id:'d1_hlr_alt6',name:'Lying Leg Raises',type:'reps',isBand:false,muscles:{primary:'Lower Abs',secondary:'Hip Flexors'},
+  steps:['Lie on your back, legs straight, hands under your hips or at your sides.','Keeping your lower back pressed into the floor, raise your legs to vertical.','Lower them slowly over 3 seconds, stopping just above the floor.','If your back arches, bend your knees slightly.'],
+  tip:'Needs no bar, so it works anywhere. The slow lowering is where the abs do the work.'});
 SUBS.d4_shr=[
   {id:'d4_shr_alt1',name:'Band Shrugs',type:'reps',isBand:true,muscles:{primary:'Traps',secondary:'Forearms'},steps:['Stand on the band, one end in each hand.','Shrug your shoulders straight up.','Hold briefly, then lower slowly.'],tip:'Constant band tension. Use the Blue band for meaningful resistance.'},
   {id:'d4_shr_alt2',name:'Single-Arm DB Shrug',type:'weighted',muscles:{primary:'Traps',secondary:'Forearms'},steps:['Hold one DB at your side, other hand on your hip.','Shrug straight up and hold 1 second.','Lower slowly. Complete all reps, then switch.'],tip:'Lets you go heavier per side without grip on both hands failing first.'},
   {id:'d4_shr_alt3',name:'Scapular Push-up Shrugs',type:'reps',muscles:{primary:'Traps',secondary:'Serratus'},steps:['Start in a push-up position, arms locked straight.','Let your chest sink between your shoulder blades.','Push the floor away and round your upper back up.'],tip:'Bodyweight option for travel days. Elbows stay locked; the movement is only at the shoulder blades.'},
   {id:'d4_shr_alt4',name:'Behind-Back DB Shrug',type:'weighted',muscles:{primary:'Traps',secondary:'Forearms'},steps:['Hold DBs behind your thighs, palms facing back.','Shrug straight up, hold 1 second.','Lower slowly.'],tip:'Slightly different line of pull than front-held shrugs.'}
 ];
+SUBS.d4_lsl=_cloneSubs('d3_dlr','d4_lsl');
 // EX_ALT_MAP lets any id (base or alt) look up its full family, for muscle-frequency enumeration.
 var EX_ALT_MAP={};
 Object.keys(SUBS).forEach(function(baseId){
@@ -1548,18 +1557,68 @@ function renderCyclingCard(key){
   return h;
 }
 function getCyclingWeekStats(weekStart){
-  var t=now(),ws=weekStart||getMondayOf(t),done=0,total=0,km=0;
+  var t=now(),ws=weekStart||getMondayOf(t),done=0,total=0,km=0,min=0;
   for(var i=0;i<7;i++){
     var d=new Date(ws);d.setDate(ws.getDate()+i);
     if(d>t)break;
     var cyc=loadCycling(toKey(d));
     ['morning','afternoon'].forEach(function(leg){
       total++;
-      if(cyc[leg].done){done++;if(cyc[leg].km)km+=+cyc[leg].km;}
+      if(cyc[leg].done){done++;if(cyc[leg].km)km+=+cyc[leg].km;if(cyc[leg].min)min+=+cyc[leg].min;}
     });
-    (cyc.extra||[]).forEach(function(ex){done++;total++;if(ex.km)km+=+ex.km;});
+    (cyc.extra||[]).forEach(function(ex){done++;total++;if(ex.km)km+=+ex.km;if(ex.min)min+=+ex.min;});
   }
-  return {done:done,total:total,km:Math.round(km*10)/10};
+  return {done:done,total:total,km:Math.round(km*10)/10,min:Math.round(min)};
+}
+// ── WALKING (one entry per day: minutes, km, steps; weekly minute goal) ──
+function loadWalk(key){var log=load().logs[key];return(log&&log.walk)||{min:'',km:'',steps:''};}
+function getWalkGoal(){var g=parseInt(localStorage.getItem('pt_walk_goal'));return(g>0&&g<=3000)?g:150;}
+function updWalk(key,field,val){
+  var data=load();
+  if(!data.logs[key])data.logs[key]={};
+  if(!data.logs[key].walk)data.logs[key].walk={min:'',km:'',steps:''};
+  var n=parseFloat(val);
+  data.logs[key].walk[field]=(val===''||isNaN(n)||n<0)?'':n;
+  save(data);
+  var el=document.getElementById('walksum_'+key);if(el)el.innerHTML=renderWalkSummary(key);
+}
+function getWalkWeekStats(weekStart){
+  var t=now(),ws=weekStart||getMondayOf(t),days=0,min=0,km=0,steps=0;
+  for(var i=0;i<7;i++){
+    var d=new Date(ws);d.setDate(ws.getDate()+i);
+    if(d>t)break;
+    var w=loadWalk(toKey(d));
+    if((+w.min||0)+(+w.km||0)+(+w.steps||0)>0){days++;min+=+w.min||0;km+=+w.km||0;steps+=+w.steps||0;}
+  }
+  return {days:days,min:Math.round(min),km:Math.round(km*10)/10,steps:Math.round(steps)};
+}
+function editWalkGoal(){
+  var raw=prompt('Weekly walking goal in minutes',String(getWalkGoal()));
+  if(raw==null)return;
+  var g=parseInt(raw);
+  if(!(g>=10&&g<=3000)){showToast('Enter a goal between 10 and 3000 minutes','var(--danger)');return;}
+  localStorage.setItem('pt_walk_goal',String(g));
+  document.querySelectorAll('[id^="walksum_"]').forEach(function(el){el.innerHTML=renderWalkSummary(el.id.slice(8));});
+  try{if(typeof rProg==='function')rProg();}catch(e){}
+}
+function renderWalkSummary(key){
+  var wk=getMondayOf(new Date(key+'T00:00:00')),ws=getWalkWeekStats(wk),cs=getCyclingWeekStats(wk),goal=getWalkGoal();
+  var cm=cs.min||0,tot=ws.min+cm,pct=Math.min(100,Math.round(tot/goal*100));
+  var h='<div class="walk-bar"><div style="width:'+pct+'%"></div></div>';
+  h+='<div class="walk-note">'+tot+' / '+goal+' active min this week'+(cm?' (walking '+ws.min+' + cycling '+cm+')':'')+(ws.days?' \u00b7 '+ws.days+' walk day'+(ws.days>1?'s':''):'')+(ws.km?' \u00b7 '+ws.km+' km walked':'')+(ws.steps?' \u00b7 '+ws.steps.toLocaleString()+' steps':'')+' \u00b7 <button class="walk-goal-btn" onclick="editWalkGoal()">change goal</button></div>';
+  return h;
+}
+function renderWalkCard(key){
+  var w=loadWalk(key);
+  var h='<div class="cyc-card"><div class="cyc-hdr">&#128694; Walking</div>';
+  h+='<div class="cyc-leg"><div class="cyc-leg-lbl">Daily walk</div><div class="cyc-fields">';
+  h+='<input type="number" inputmode="numeric" placeholder="min" value="'+(w.min||'')+'" onchange="updWalk(\''+key+'\',\'min\',this.value)">';
+  h+='<input type="number" inputmode="decimal" placeholder="km" value="'+(w.km||'')+'" onchange="updWalk(\''+key+'\',\'km\',this.value)">';
+  h+='<input type="number" inputmode="numeric" placeholder="steps" style="width:64px" value="'+(w.steps||'')+'" onchange="updWalk(\''+key+'\',\'steps\',this.value)">';
+  h+='</div></div>';
+  if(isRest(new Date(key+'T00:00:00')))h+='<div class="walk-note">Rest day: an easy 30-45 min walk is a good use of it.</div>';
+  h+='<div id="walksum_'+key+'">'+renderWalkSummary(key)+'</div></div>';
+  return h;
 }
 function loadChecks(){try{return JSON.parse(localStorage.getItem(todayCheckKey())||'{}')}catch(e){return{}}}
 function saveChecks(c){
@@ -1630,11 +1689,10 @@ function calcStreak(){
 // Maps each swappable exercise to its designated bodyweight-only alt (by name).
 // Exercises not listed here are already bodyweight (Feet-Elevated Push-ups, Plank, Dead Bug, Diamond Push-ups, Side Plank).
 var AWAY_MAP={
-  d1_csr:'Inverted Row', d1_dsp:'Pike Push-ups', d1_bcf:'Wide Push-ups', d1_ezc:'Doorframe Isometric Curl', d1_ote:'Diamond Push-ups', d1_brt:'Bicycle Crunches',
+  d1_csr:'Inverted Row', d1_dsp:'Pike Push-ups', d1_bcf:'Wide Push-ups', d1_ezc:'Doorframe Isometric Curl', d1_brt:'Bicycle Crunches',
   d2_gbs:'Pulse Squats', d2_rdl:'Single-Leg Bodyweight RDL', d2_bss:'Curtsy Lunges', d2_hpt:'Marching Glute Bridge', d2_dcr:'Single-Leg Calf Raise',
   d3_dff:'Wide Push-ups', d3_dsp:'Pike Push-ups', d3_dlr:'Pike Push-ups', d3_dsc:'Diamond Push-ups', d3_btp:'Diamond Push-ups',
-  d4_sar:'Inverted Row', d4_blp:'Doorframe/Table Rows', d4_brf:'Prone Y-T-W Raises', d4_dhc:'Doorframe Isometric Curl', d4_bfp:'Wall Slides',
-  d1_dlr:'Pike Push-ups', d1_brf:'Prone Y-T-W Raises', d4_shr:'Scapular Push-up Shrugs',
+  d4_sar:'Inverted Row', d4_blp:'Doorframe/Table Rows', d4_brf:'Prone Y-T-W Raises', d4_dhc:'Doorframe Isometric Curl', d1_dlr:'Pike Push-ups', d1_pul:'Doorframe/Table Rows', d4_pul:'Doorframe/Table Rows', d1_hlr:'Lying Leg Raises', d4_lsl:'Pike Push-ups', d1_brf:'Prone Y-T-W Raises', d4_shr:'Scapular Push-up Shrugs',
   d5_dss:'Pulse Squats', d5_slr:'Single-Leg Bodyweight RDL', d5_drl:'Walking Lunges'
 };
 function isAwayModeActive(pd){
@@ -1693,16 +1751,17 @@ function getBest(exId){
 function bestLabel(exId,ex){
   var b=getBest(exId);
   if(ex.type==='time'&&b.time>0)return 'Best: '+b.time+'s';
-  if(ex.type==='weighted'&&b.weight>0)return 'Best: '+b.reps+'r x '+b.weight+'kg';
-  if(ex.loadable&&b.weight>0)return 'Best: +'+b.weight+'kg';
+  if(ex.type==='weighted'&&b.weight>0)return 'Best: '+b.reps+'r x '+b.weight+wUnit();
+  if(ex.loadable&&b.weight>0)return 'Best: +'+b.weight+wUnit();
   if(b.reps>0)return 'Best: '+b.reps+' reps';
   return null;
 }
 // PR metric per exercise type: weighted = estimated 1RM, reps = reps, time = seconds
-function prMetric(type,st){
+function prMetric(type,st,exId){
   if(type==='time')return +st.time||0;
   if(type==='weighted')return(+st.weight&&+st.reps)?(+st.weight)*(1+(+st.reps)/30):0;
-  return(+st.weight||0)*1000+(+st.reps||0); // added load outranks reps
+  if(exId&&bwFactorOf(exId)&&getBodyWeight())return effLoad(exId,st)*(1+(+st.reps||0)/30); // body weight counts
+  return(+st.weight||0)*1000+(+st.reps||0); // otherwise added load outranks reps
 }
 function checkNewPR(exId,sets){
   var info=resolveExById(exId),type=info&&info.type?info.type:'reps';
@@ -1713,11 +1772,11 @@ function checkNewPR(exId,sets){
     if(!src||!src.exercises)return;
     ids.forEach(function(gid){
       var ex=src.exercises[gid];if(!ex||!ex.sets)return;
-      ex.sets.forEach(function(st){if(st.done)best=Math.max(best,prMetric(type,st));});
+      ex.sets.forEach(function(st){if(st.done)best=Math.max(best,prMetric(type,st,gid));});
     });
   });
   if(best<=0)return false; // first time logged = baseline, not a PR
-  return sets.some(function(st){return st.done&&prMetric(type,st)>best;});
+  return sets.some(function(st){return st.done&&prMetric(type,st,exId)>best;});
 }
 // PR count is recomputed from the logs, so edits and deletions can't skew it
 function computePRCount(){
@@ -1731,7 +1790,7 @@ function computePRCount(){
         var info=resolveExById(id);
         var type=info&&info.type?info.type:(ex.sets.some(function(x){return x.weight;})?'weighted':'reps');
         var name=(info&&info.name)||ex.name||id,m=0;
-        ex.sets.forEach(function(x){if(x.done)m=Math.max(m,prMetric(type,x));});
+        ex.sets.forEach(function(x){if(x.done)m=Math.max(m,prMetric(type,x,id));});
         if(m<=0)return;
         if(bests[name]>0&&m>bests[name])count++;
         bests[name]=Math.max(bests[name]||0,m);
@@ -1757,7 +1816,7 @@ function getProgHint(exId,ex){
     if(maxW>0)weights.push(maxW);
   });
   if(weights.length>=2&&weights[weights.length-1]===weights[weights.length-2])
-    return 'Same weight for 2 sessions — try adding 1-2kg!';
+    return 'Same weight for 2 sessions — try adding '+(wUnit()==='lb'?'2.5-5 lb':'1-2 '+wUnit()+'')+'!';
   return null;
 }
 
@@ -1780,13 +1839,10 @@ function getPullupBest(){
   return getBest('d1_pul').reps;
 }
 function getSetsForAbsoluteWeek(exId,isMorn,startDateStr,totalWeek){
-  var sd=new Date(startDateStr+'T00:00:00');
-  var ws=new Date(sd);ws.setDate(sd.getDate()+totalWeek*7);
-  var we=new Date(ws);we.setDate(ws.getDate()+6);
   var found=null;
-  Object.entries(load().logs).forEach(function(e){
-    var dt=new Date(e[0]+'T00:00:00');
-    if(dt<ws||dt>we)return;
+  Object.entries(load().logs).sort().forEach(function(e){
+    var info=getCycleWeekInfo(new Date(e[0]+'T00:00:00'));
+    if(!info||info.totalWeek!==totalWeek)return;
     var src=isMorn?e[1].morning:e[1].ppl;
     if(src&&src.exercises&&src.exercises[exId]&&src.exercises[exId].sets)found=src.exercises[exId].sets;
   });
@@ -1816,11 +1872,37 @@ function calibrate(exId){
     var ew=document.getElementById('inp_'+exId+'_'+si+'_weight'),er=document.getElementById('inp_'+exId+'_'+si+'_reps');
     if(ew)ew.value=w;if(er)er.value=lo;
   });
-  showToast('Start at '+w+'kg for '+lo+' reps (about 2 reps left in the tank)','var(--success)');
+  showToast('Start at '+w+wUnit()+' for '+lo+' reps (about 2 reps left in the tank)','var(--success)');
 }
-function roundLoad(w){return Math.max(1,w<20?Math.round(w):Math.round(w/2.5)*2.5);}
+function roundLoad(w){
+  var lad=getWeightLadder();
+  if(lad){var best=lad[0];lad.forEach(function(x){if(Math.abs(x-w)<Math.abs(best-w))best=x;});return best;}
+  var us=getUserStep();if(us)return Math.max(us,Math.round(w/us)*us);
+  if(wUnit()==='lb')return Math.max(2.5,Math.round(w/2.5)*2.5);
+  return Math.max(1,w<20?Math.round(w):Math.round(w/2.5)*2.5);
+}
 function isDeloadDate(key){var i=getCycleWeekInfo(new Date(key+'T00:00:00'));return !!i&&i.type==='deload';}
-function incFor(w){return w<10?1:(w<20?2:2.5);}
+function wUnit(){return localStorage.getItem('pt_unit')==='lb'?'lb':'kg';}
+function getWeightLadder(){
+  var raw=localStorage.getItem('pt_weights');if(!raw)return null;
+  var a=raw.split(/[\s,;]+/).map(parseFloat).filter(function(x){return x>0;}).sort(function(x,y){return x-y;});
+  return a.length>=2?a:null;
+}
+function getUserStep(){var s=parseFloat(localStorage.getItem('pt_step'));return s>0?s:0;}
+// n weight jumps above w: your own weight list first, then your smallest-jump setting, then sensible defaults
+function incFor(w,n){
+  n=n||1;
+  var lad=getWeightLadder();
+  if(lad){var cnt=0,cur=w;for(var i=0;i<lad.length&&cnt<n;i++){if(lad[i]>cur+1e-9){cur=lad[i];cnt++;}}if(cnt>0)return Math.round((cur-w)*100)/100;}
+  var us=getUserStep();if(us)return us*n;
+  var base=wUnit()==='lb'?(w<20?2.5:5):(w<10?1:(w<20?2:2.5));
+  return base*n;
+}
+function starterWt(exId,bid){
+  var cal=getCalib(bid);if(cal)return cal;
+  var v=STARTER_KG[exId]||STARTER_KG[bid]||STARTER_KG['_default'];
+  return wUnit()==='lb'?roundLoad(v*2.20462):v;
+}
 function getRec(exId,ex,mode){
   var isMorn=exId.startsWith('m_');
   var rr=repRange(ex.target||'1x10');
@@ -1836,7 +1918,7 @@ function getRec(exId,ex,mode){
     if(src&&src.exercises&&src.exercises[exId]&&src.exercises[exId].sets)sessions.push(src.exercises[exId].sets);
   });
   var _inf=resolveExById(exId),_bid=_inf&&_inf.isAlt?_inf.baseId:exId;
-  var sk=lw?0:(getCalib(_bid)||STARTER_KG[exId]||STARTER_KG[_bid]||STARTER_KG['_default']);
+  var sk=lw?0:starterWt(exId,_bid);
   if(mode==='starter'||!sessions.length)return Array.from({length:n},function(){return{reps:targetReps,weight:sk,done:false};});
   var last=sessions[sessions.length-1];
   var maxW=0,allHit=true;
@@ -1850,8 +1932,8 @@ function getRec(exId,ex,mode){
   });
   var avgRpe=rp.length?rp.reduce(function(a,b){return a+b;},0)/rp.length:0;
   var step=incFor(maxW);
-  if(avgRpe>=9.5)step=0;else if(avgRpe>0&&avgRpe<=6.5)step*=2; // maxed out: hold; very easy: bigger jump
-  function nextW(base,hit){if(lw&&!base)return(hit&&step>0)?2:0;return hit&&base>0?base+step:(base||sk);}
+  if(avgRpe>=9.5)step=0;else if(avgRpe>0&&avgRpe<=6.5)step=incFor(maxW,2); // maxed out: hold; very easy: bigger jump
+  function nextW(base,hit){if(lw&&!base)return(hit&&step>0)?(wUnit()==='lb'?5:2):0;return hit&&base>0?base+step:(base||sk);}
   var nextReps=allHit?(step>0?rr.lo:rr.hi):Math.min(rr.hi,Math.max(rr.lo,(minLast===999?rr.lo:minLast+1)));
   if(mode==='last'){
     return Array.from({length:n},function(_,i){
@@ -2014,7 +2096,7 @@ function getBest1RM(exId){
     var src=isMorn?log.morning:log.ppl;
     if(!src||!src.exercises||!src.exercises[exId])return;
     src.exercises[exId].sets.forEach(function(s){
-      if(s.weight&&s.reps){var rm=calc1RM(+s.weight,+s.reps);if(rm>best)best=rm;}
+      var el=effLoad(exId,s);if(el>0&&s.reps){var rm=calc1RM(el,+s.reps);if(rm>best)best=rm;}
     });
   });
   return best;
@@ -2025,7 +2107,7 @@ function get1RMHistory(exId){
     var src=isMorn?e[1].morning:e[1].ppl;
     if(!src||!src.exercises||!src.exercises[exId])return;
     var best=0;
-    src.exercises[exId].sets.forEach(function(s){if(s.weight&&s.reps){var rm=calc1RM(+s.weight,+s.reps);if(rm>best)best=rm;}});
+    src.exercises[exId].sets.forEach(function(s){var el=effLoad(exId,s);if(el>0&&s.reps){var rm=calc1RM(el,+s.reps);if(rm>best)best=rm;}});
     if(best>0)hist.push({date:e[0].slice(5),rm:best});
   });
   return hist.slice(-10);
@@ -2301,6 +2383,100 @@ function showToast(msg,borderColor){
   setTimeout(function(){t.style.opacity='0';t.style.transition='opacity .4s';setTimeout(function(){t.remove();},400);},2800);
 }
 
+
+// ── PLAN CONTROLS: pause / welcome back / suggested deload ──
+function refreshScreens(){try{rToday();}catch(e){}try{rProg();}catch(e){}try{rWeek();}catch(e){}}
+function ensureProgramStart(){
+  if(localStorage.getItem('pt_program_start'))return true;
+  var ks=Object.keys(load().logs).sort();
+  if(!ks.length)return false;
+  localStorage.setItem('pt_program_start',ks[0]);return true;
+}
+function isPlanPaused(){return !!localStorage.getItem('pt_program_start')&&isPausedDate(now());}
+function pausePlan(){
+  if(!ensureProgramStart()){showToast('Log a session first, then you can pause the plan','var(--muted)');return;}
+  var a=getPauses();if(a.length&&a[a.length-1][1]===null)return;
+  a.push([toKey(now()),null]);savePauses(a);refreshScreens();
+}
+function resumePlan(){
+  var a=getPauses();if(!a.length)return;
+  var p=a[a.length-1];if(p[1]!==null)return;
+  var y=now();y.setDate(y.getDate()-1);var yk=toKey(y);
+  if(p[0]>yk)a.pop();else p[1]=yk;
+  savePauses(a);refreshScreens();showToast('Plan resumed','var(--success)');
+}
+function lastTrainedKey(){
+  var logs=load().logs;
+  var ks=Object.keys(logs).filter(function(k){var l=logs[k];return(l.ppl&&l.ppl.done)||(l.morning&&l.morning.done);}).sort();
+  return ks.length?ks[ks.length-1]:null;
+}
+function pickUpPlan(){
+  var last=lastTrainedKey();if(!last||!ensureProgramStart())return;
+  var from=new Date(last+'T00:00:00');from.setDate(from.getDate()+1);
+  var to=now();to.setDate(to.getDate()-1);
+  if(dnum(from)<=dnum(to)){var a=getPauses();a.push([toKey(from),toKey(to)]);savePauses(a);}
+  localStorage.setItem('pt_wb_dismissed',last);refreshScreens();showToast('Picking up where you left off','var(--success)');
+}
+function easeBackIn(){
+  localStorage.setItem('pt_program_start',toKey(now()));
+  localStorage.removeItem('pt_pauses');
+  var last=lastTrainedKey();if(last)localStorage.setItem('pt_wb_dismissed',last);
+  refreshScreens();showToast('Restarted with two lighter re-entry weeks','var(--success)');
+}
+function dismissWelcome(){var last=lastTrainedKey();if(last)localStorage.setItem('pt_wb_dismissed',last);refreshScreens();}
+function recentAvgRpe(days){
+  var t=now(),n=0,sum=0,logs=load().logs;
+  for(var i=0;i<days;i++){
+    var d=new Date(t);d.setDate(t.getDate()-i);
+    var src=logs[toKey(d)]&&logs[toKey(d)].ppl;
+    if(!src||!src.exercises)continue;
+    Object.keys(src.exercises).forEach(function(id){((src.exercises[id]||{}).sets||[]).forEach(function(s){if(s.done&&+s.rpe>0){n++;sum+=+s.rpe;}});});
+  }
+  return n>=12?sum/n:0;
+}
+function deloadSuggestion(){
+  if(isPlanPaused()||isDeloadWeek())return null;
+  var mk=toKey(getMondayOf(now()));
+  if(localStorage.getItem('pt_deload_dismissed')===mk)return null;
+  var prev=new Date(now());prev.setDate(prev.getDate()-7);
+  var pi=getCycleWeekInfo(prev);if(pi&&pi.type==='deload')return null;
+  var stalls=getPlateaus().length,rpe=recentAvgRpe(14);
+  return(stalls>=3&&rpe>=8.5)?{stalls:stalls,rpe:Math.round(rpe*10)/10,mk:mk}:null;
+}
+function acceptDeload(mk){localStorage.setItem('pt_deload_override',mk);refreshScreens();showToast('This week is now a deload','var(--success)');}
+function dismissDeload(mk){localStorage.setItem('pt_deload_dismissed',mk);refreshScreens();}
+function planBanners(){
+  var t=now(),h='';
+  if(isPlanPaused()){
+    return '<div class="plan-banner"><div class="pb-title">Plan paused</div><div class="pb-sub">Your cycle is on hold and nothing counts as missed. Resume when you are ready.</div><div class="pb-actions"><button onclick="resumePlan()">Resume plan</button></div></div>';
+  }
+  var last=lastTrainedKey();
+  if(last&&localStorage.getItem('pt_wb_dismissed')!==last){
+    var gap=dnum(t)-dnum(new Date(last+'T00:00:00'));
+    if(gap>=10)h+='<div class="plan-banner"><div class="pb-title">Welcome back</div><div class="pb-sub">Your last workout was '+gap+' days ago. How do you want to continue?</div><div class="pb-actions"><button onclick="pickUpPlan()">Pick up where I left off</button><button onclick="easeBackIn()">Ease back in</button><button class="pb-quiet" onclick="dismissWelcome()">Dismiss</button></div></div>';
+  }
+  var ds=deloadSuggestion();
+  if(ds)h+='<div class="plan-banner"><div class="pb-title">Consider a deload week</div><div class="pb-sub">'+ds.stalls+' lifts have stalled and your recent effort averages RPE '+ds.rpe+'. A lighter week now may help you push past it.</div><div class="pb-actions"><button onclick="acceptDeload(\''+ds.mk+'\')">Make this week a deload</button><button class="pb-quiet" onclick="dismissDeload(\''+ds.mk+'\')">Not now</button></div></div>';
+  return h;
+}
+
+// ── BODYWEIGHT-AWARE LOAD (pull-ups / push-ups count your body weight) ──
+function getBodyWeight(){
+  var logs=load().logs,ks=Object.keys(logs).sort().reverse();
+  for(var i=0;i<ks.length;i++){var b=logs[ks[i]].body;if(b&&+b.weight>0)return +b.weight;}
+  return 0;
+}
+function bwFactorOf(exId){
+  var info=resolveExById(exId),bid=info&&info.isAlt?info.baseId:exId;
+  var base=ALL_EX.find(function(e){return e.id===bid;});
+  return base&&base.loadable?(base.bwFactor||1):0;
+}
+function effLoad(exId,s){
+  var added=+s.weight||0,f=bwFactorOf(exId);
+  if(!f)return added;
+  var bw=getBodyWeight();
+  return bw?added+bw*f:added;
+}
 // ── REST TIMER ─────────────────────────────────────────────────
 function parseRestSecs(restStr){
   if(!restStr)return 60;
@@ -2549,7 +2725,7 @@ document.addEventListener('visibilitychange',function(){
 function copyLastSession(){
   var allLogs=load().logs;
   var date=new Date(mKey+'T00:00:00');
-  var pd=pplDay(date);
+  var pd=(mType==='ppl'&&mDay)||pplDay(date);
   var pastKeys=Object.keys(allLogs).filter(function(k){return k<mKey;}).sort().reverse();
   var found=null;
   for(var i=0;i<pastKeys.length;i++){
@@ -2672,6 +2848,18 @@ function render(n){
   else if(n==='guide')rGuide();
 }
 
+
+// ── SCREEN WAKE LOCK (so rest-timer beeps are not lost to screen lock) ──
+var _wakeLock=null;
+function acquireWakeLock(){
+  try{
+    if(navigator.wakeLock&&!_wakeLock){
+      navigator.wakeLock.request('screen').then(function(l){_wakeLock=l;l.addEventListener('release',function(){_wakeLock=null;});}).catch(function(){});
+    }
+  }catch(e){}
+}
+function releaseWakeLock(){try{if(_wakeLock){_wakeLock.release();_wakeLock=null;}}catch(e){}}
+document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'&&mType)acquireWakeLock();});
 // ── TODAY ──────────────────────────────────────────────────────
 function rToday(){
   try{ _rToday(); } catch(e){
@@ -2696,6 +2884,7 @@ function _rToday(){
   h+='<div class="ph-sub">'+t.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})+'</div></div>';
   // Phase card
   var ph=getCurrentPhase();
+  h+=planBanners();
   if(ph){
     h+='<div class="phase-card" style="--phase-color:'+ph.color+'">';
     h+='<div class="phase-tag">Training Phase</div>';
@@ -2725,12 +2914,15 @@ function _rToday(){
   for(var lwi=0;lwi<7;lwi++){var lwd=new Date(prevWS);lwd.setDate(prevWS.getDate()+lwi);var lwk=toKey(lwd);var lwlog=load().logs[lwk]||{};if(dayComplete(lwk,lwd))lwDone++;lwVol+=calcSessionVol(lwlog,'ppl');}
   if(lwDone>0){
     var lwCyc=getCyclingWeekStats(prevWS);
+    var lwWalk=getWalkWeekStats(prevWS);
     h+='<div class="week-sum"><div class="week-sum-hdr">Last Week Recap</div><div class="week-sum-stats">';
     h+='<div class="wsstat"><div class="wsstat-val" style="color:var(--success)">'+lwDone+'/7</div><div class="wsstat-lbl">Days Done</div></div>';
-    h+='<div class="wsstat"><div class="wsstat-val" style="color:var(--pull)">'+Math.round(lwVol/1000*10)/10+'k</div><div class="wsstat-lbl">kg Vol</div></div>';
+    h+='<div class="wsstat"><div class="wsstat-val" style="color:var(--pull)">'+Math.round(lwVol/1000*10)/10+'k</div><div class="wsstat-lbl">'+wUnit()+' Vol</div></div>';
     h+='<div class="wsstat"><div class="wsstat-val" style="color:var(--morning)">'+Math.round(lwDone/7*100)+'%</div><div class="wsstat-lbl">Rate</div></div>';
     h+='<div class="wsstat"><div class="wsstat-val" style="color:var(--legs)">'+lwCyc.done+'/'+lwCyc.total+'</div><div class="wsstat-lbl">🚴 Legs</div></div>';
-    h+='</div></div>';
+    h+='</div>';
+    if(lwWalk.days>0)h+='<div class="walk-note" style="padding:0 2px">Walking: '+lwWalk.days+' day'+(lwWalk.days>1?'s':'')+(lwWalk.min?' \u00b7 '+lwWalk.min+' min':'')+(lwWalk.km?' \u00b7 '+lwWalk.km+' km':'')+'</div>';
+    h+='</div>';
   }
   h+='<div class="streak-banner"><div class="s-flame">🔥</div>';
   h+='<div class="s-info"><div class="s-num">'+sb.streak+'</div><div class="s-lbl">day streak</div></div>';
@@ -2749,6 +2941,7 @@ function _rToday(){
   h+='<div class="scard-badge '+(mDone?'done-badge':'log-badge')+'">'+(mDone?'Edit ✓':'Log')+'</div></div></div>';
   // Cycling commute tracker
   h+=renderCyclingCard(key);
+  h+=renderWalkCard(key);
   if(rest){
     h+='<div class="rcard"><div class="rcard-icon">😴</div>';
     h+='<div class="rcard-title">Rest Day</div>';
@@ -2758,7 +2951,8 @@ function _rToday(){
     var restPplDay=null;
     for(var _ri=1;_ri<=7;_ri++){var _rd=(dow-_ri+7)%7;if(_rsched[_rd]){restPplDay=_rsched[_rd];break;}}
 
-    if(restPplDay){var ri=PPL[restPplDay];h+='<button class="rest-swap-btn" onclick="openModal(\'ppl\',\''+key+'\')">📝 Log '+ri.name+' Anyway</button>';}
+    var _offLog=(load().logs[key]||{}).ppl,_offDay=(_offLog&&_offLog.day)||restPplDay;
+    if(_offDay&&PPL[_offDay]){var ri=PPL[_offDay];h+='<button class="rest-swap-btn" onclick="openModal(\'ppl\',\''+key+'\',\''+_offDay+'\')">📝 '+(_offLog?'Edit ':'Log ')+ri.name+(_offLog?'':' Anyway')+'</button>';}
     h+='<div class="recovery-card"><div class="recovery-hdr">Active Recovery Ideas</div>';
     RECOVERY_TIPS.forEach(function(tip){h+='<div class="recovery-item"><span style="font-size:18px">'+tip.icon+'</span>'+tip.text+'</div>';});
     h+='</div>';
@@ -2797,7 +2991,7 @@ function rWeek(){
   if(selWDay===null){var d=t.getDay();selWDay=d===0?6:d-1;}
   var weekLabel=weekOffset===0?'This Week':weekOffset>0?'Future Week':'Week -'+Math.abs(weekOffset);
   var weekHasData=days.some(function(d){return !!load().logs[toKey(d)];});
-  var h='<div class="week-nav">';
+  var h=(getScheduleFor(offsetDate)===SCHED_REENTRY?'<div class="walk-note" style="margin:8px 20px 0">Re-entry weeks: 4 training days with legs on the Lower day only, to ease you back in. It switches to the full 5-day plan on its own.</div>':'')+'<div class="week-nav">';
   h+='<button class="week-nav-btn" onclick="changeWeekOffset(-1)">&#8249;</button>';
   h+='<div class="week-nav-title">'+weekLabel+'</div>';
   h+='<button class="week-nav-btn" onclick="changeWeekOffset(1)">&#8250;</button>';
@@ -2864,7 +3058,7 @@ function rWeek(){
       var curEx=EX[spd].find(function(e){return e.id===id;});
       var resolved=curEx||resolveExById(id);
       var exName=resolved?resolved.name:(el.name?el.name+' (legacy)':id);
-      var sv=el.sets.map(function(s){return s.time?s.time+'s':s.weight?s.reps+'r x '+s.weight+'kg':s.bands&&s.bands.length?((s.reps||'?')+'r '+getBandDisplayText(s.bands)):(s.reps||'?')+'r';}).join(' | ');
+      var sv=el.sets.map(function(s){return s.time?s.time+'s':s.weight?s.reps+'r x '+s.weight+wUnit():s.bands&&s.bands.length?((s.reps||'?')+'r '+getBandDisplayText(s.bands)):(s.reps||'?')+'r';}).join(' | ');
       h+='<div class="exlog-row"><span>'+exName+'</span><span style="color:var(--muted);font-size:11px">'+sv+'</span></div>';
     });
   }
@@ -2874,7 +3068,7 @@ function rWeek(){
     h+='<div class="body-inline">';
     h+='<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--pull);margin-bottom:8px">⚖️ Body Metrics</div>';
     h+='<div class="body-inline-row">';
-    if(bodyData.weight)h+='<div class="body-inline-stat"><div class="body-inline-val">'+bodyData.weight+'</div><div class="body-inline-lbl">kg</div></div>';
+    if(bodyData.weight)h+='<div class="body-inline-stat"><div class="body-inline-val">'+bodyData.weight+'</div><div class="body-inline-lbl">'+wUnit()+'</div></div>';
     if(bodyData.height)h+='<div class="body-inline-stat"><div class="body-inline-val">'+bodyData.height+'</div><div class="body-inline-lbl">cm</div></div>';
     if(bodyData.bmi)h+='<div class="body-inline-stat"><div class="body-inline-val">'+bodyData.bmi+'</div><div class="body-inline-lbl">BMI · '+bmiLabel(bodyData.bmi)+'</div></div>';
     h+='</div>';
@@ -2896,6 +3090,7 @@ function rWeek(){
   }
   if(!isFut){
     h+=renderCyclingCard(sk);
+    h+=renderWalkCard(sk);
     // Delete + refresh-structure buttons for logged sessions
     if(slog.morning&&slog.morning.exercises&&Object.keys(slog.morning.exercises).length){
       h+='<button class="delete-session-btn" onclick="deleteSession(\''+sk+'\',\'morning\')">🗑️ Delete Morning Session</button>';
@@ -2933,6 +3128,7 @@ function saveBody(key,obj){
   save(d);
 }
 function calcBMI(weightKg,heightCm){
+  if(wUnit()==='lb'&&weightKg>0)weightKg=weightKg/2.20462;
   if(!weightKg||!heightCm||heightCm<=0)return null;
   var h=heightCm/100;
   return Math.round((weightKg/(h*h))*10)/10;
@@ -2997,13 +3193,13 @@ function openBodySheet(key){
     +'<div class="cal-action-date">'+label+' — Body Metrics</div>'
     +'<div class="body-sheet">'
     +'<div class="body-metric-row">'
-    +'<div class="body-metric-group"><div class="body-metric-lbl">Weight (kg)</div>'
+    +'<div class="body-metric-group"><div class="body-metric-lbl">Weight ('+wUnit()+')</div>'
     +'<input class="body-metric-inp" id="bsWeight" type="number" inputmode="decimal" placeholder="e.g. 72.5" value="'+w+'" oninput="updBodyBMI()"></div>'
     +'<div class="body-metric-group"><div class="body-metric-lbl">Height (cm)</div>'
     +'<input class="body-metric-inp" id="bsHeight" type="number" inputmode="decimal" placeholder="e.g. 170" value="'+h+'" oninput="updBodyBMI()"></div>'
     +'</div>'
     +'<div class="body-bmi-result" id="bsBMIResult">'+(bmi?'BMI '+bmi+' — '+bmiLabel(bmi):'')+'</div>'
-    +'<textarea class="body-note-area" id="bsNote" maxlength="500" placeholder="Any notes... (optional)" oninput="this.value=this.value.slice(0,500);this.nextElementSibling.textContent=this.value.length+\'/500\'">'+note+'</textarea>'
+    +'<textarea class="body-note-area" id="bsNote" maxlength="500" placeholder="Any notes... (optional)" oninput="this.value=this.value.slice(0,500);this.nextElementSibling.textContent=this.value.length+\'/500\'">'+esc(note)+'</textarea>'
     +'<div class="body-note-count">'+(note?note.length:0)+'/500</div>'
     +'</div>'
     +'<button class="save-btn" style="margin:0 20px 8px;width:calc(100% - 40px)" onclick="saveBodySheet(\''+key+'\')">Save ✓</button>'
@@ -3122,6 +3318,16 @@ function renderChangelog(){
       'Behind the scenes: the app is now built from small source files (see README) while still shipping as one index.html',
       'Exercise ids are documented as permanent, and a rename alias table keeps history attached if one is ever renamed',
       'Removed hard-coded personal wording (rooftop, school) from tips and the commute labels',
+      'Replanned for balance: Upper day trimmed from 11 to 7 exercises; curls moved to Pull day; core now spread over four days; side delts get 4 sets on Upper and Push plus a lateral raise on Pull',
+      'Plan control: pause the plan (Progress > Settings) or pick up where you left off after a break; a deload can be suggested when lifts stall and effort runs high',
+      'Settings: kg/lb units, smallest weight jump and your own list of available weights drive every weight suggestion',
+      'Pull-ups and push-ups now count body weight in 1RM and PR estimates once you log your body weight',
+      'Walking and cycling minutes now share one weekly activity goal and chart; band reverse flys and shrugs went to 4 sets',
+      'Screen stays awake during a workout so rest-timer alerts are not lost to screen lock',
+      'Pull day trimmed to 8 exercises (Band Face Pulls retired; Band Reverse Fly still hits rear delts on Upper and Pull days)',
+      'Walking now has a weekly minutes goal (default 150, tap change goal) with a progress bar and an 8-week chart on Progress',
+      'Week screen explains the 4-day re-entry weeks',
+      'Walking card (minutes, km, steps per day) under Cycling, with weekly totals; walking never affects streaks',
       'New app icon: the Omega inside a 10-segment cycle ring (dimmed segments are the deload weeks). Re-add the app to your home screen to see it'
     ]},
     {ver:'v7',items:[
@@ -3266,6 +3472,28 @@ function rProg(){
   h+='</div><div class="xlabels">';
   weeks.forEach(function(w){h+='<div class="xlabel">'+w.label.replace(' ','<br>')+'</div>';});
   h+='</div></div>';
+  h+='<div class="sec-title">Activity: Walking + Cycling (Last 8 Weeks)</div>';
+  var wGoal=getWalkGoal(),wWeeks=[],wMax=wGoal,wAny=false;
+  for(var wi=7;wi>=0;wi--){
+    var wws=new Date(getMondayOf(now()));wws.setDate(wws.getDate()-wi*7);
+    var wst=getWalkWeekStats(wws),cst=getCyclingWeekStats(wws),wtot=wst.min+(cst.min||0);
+    if(wtot||wst.days)wAny=true;
+    wMax=Math.max(wMax,wtot);
+    wWeeks.push({label:wws.toLocaleDateString(undefined,{month:'short',day:'numeric'}),walk:wst.min,tot:wtot});
+  }
+  if(!wAny){
+    h+='<div style="padding:0 20px;color:var(--muted);font-size:13px">Log a walk or a ride to see your weekly active minutes here.</div>';
+  }else{
+    h+='<div class="chart-box"><div class="bars">';
+    wWeeks.forEach(function(w){
+      var bh=wMax>0?Math.max(w.tot/wMax*70,w.tot>0?4:0):0,wp=w.tot?Math.round(w.walk/w.tot*100):100;
+      h+='<div class="bc"><div class="bar" style="height:'+bh+'px;background:linear-gradient(to top,var(--legs) '+wp+'%,var(--pull) '+wp+'%);opacity:'+(w.tot>=wGoal?1:.55)+'"></div><div class="bar-lbl">'+w.tot+'</div></div>';
+    });
+    h+='</div><div class="xlabels">';
+    wWeeks.forEach(function(w){h+='<div class="xlabel">'+w.label.replace(' ','<br>')+'</div>';});
+    h+='</div></div>';
+  }
+  h+='<div class="walk-note" style="padding:0 20px">Goal: '+wGoal+' active min a week (bright bars hit it). Green = walking, blue = cycling. <button class="walk-goal-btn" onclick="editWalkGoal()">change goal</button></div>';
   h+='<div class="sec-title">Exercise Progress</div>';
   h+='<select class="ex-sel" id="exSel" onchange="rExChart()">';
   h+='<option value="">— Select exercise —</option>';
@@ -3324,7 +3552,7 @@ function rProg(){
   })();
   h+='</select><div id="exChart"></div>';
   // Volume chart (last 10 PPL sessions)
-  h+='<div class="sec-title">Session Volume (kg)</div>';
+  h+='<div class="sec-title">Session Volume ('+wUnit()+')</div>';
   h+='<div class="vol-box"><div class="vol-hdr">Sets x Reps x Weight per session</div><div class="vol-bars">';
   var volSessions=[];
   Object.entries(data.logs).sort().forEach(function(e){
@@ -3378,9 +3606,9 @@ function rProg(){
       var first=entries[0].w, last=entries[entries.length-1].w;
       var diff=Math.round((last-first)*10)/10;
       var diffCol=diff<0?'var(--success)':diff>0?'var(--danger)':'var(--muted)';
-      var diffStr=(diff>0?'+':'')+diff+' kg since start';
+      var diffStr=(diff>0?'+':'')+diff+' '+wUnit()+' since start';
       h+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">';
-      h+='<div><div style="font-family:\'Barlow Condensed\',sans-serif;font-size:28px;font-weight:800;color:var(--text)">'+last+'<span style="font-size:14px;font-weight:400;color:var(--muted)"> kg</span></div>';
+      h+='<div><div style="font-family:\'Barlow Condensed\',sans-serif;font-size:28px;font-weight:800;color:var(--text)">'+last+'<span style="font-size:14px;font-weight:400;color:var(--muted)"> '+wUnit()+'</span></div>';
       h+='<div style="font-size:11px;color:var(--muted)">Latest entry</div></div>';
       h+='<div style="text-align:right"><div style="font-size:13px;font-weight:700;color:'+diffCol+'">'+diffStr+'</div>';
       h+='<div style="font-size:11px;color:var(--muted)">'+entries.length+' entries logged</div></div>';
@@ -3462,7 +3690,7 @@ function rProg(){
         h+='<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+pr.name+'</div>';
         h+='<div style="font-size:11px;color:var(--muted)">Best set · '+dateStr+'</div></div>';
         h+='<div style="text-align:right;flex-shrink:0">';
-        h+='<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:18px;font-weight:800;color:var(--morning)">'+pr.w+'<span style="font-size:11px;font-weight:400"> kg</span></div>';
+        h+='<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:18px;font-weight:800;color:var(--morning)">'+pr.w+'<span style="font-size:11px;font-weight:400"> '+wUnit()+'</span></div>';
         h+='<div style="font-size:11px;color:var(--muted)">'+pr.reps+' reps</div></div>';
         h+='</div>';
       });
@@ -3476,6 +3704,7 @@ function rProg(){
 
   // Settings
   h+='<div class="sec-title">Settings</div>';
+  h+=renderTrainingSettings();
   var curFont=localStorage.getItem('ppl_font')||'m';
   var curTheme=localStorage.getItem('ppl_theme')||'dark';
   h+='<div class="settings-box">';
@@ -3512,7 +3741,7 @@ function rProg(){
     h+='<div class="best-week-card">';
     h+='<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:13px;font-weight:700;color:var(--morning)">'+bw.label+'</div>';
     h+='<div style="display:flex;gap:20px;margin-top:8px">';
-    h+='<div><div style="font-family:\'Barlow Condensed\',sans-serif;font-size:26px;font-weight:800;color:var(--morning)">'+Math.round(bw.vol/1000*10)/10+'k</div><div style="font-size:11px;color:var(--muted)">kg Volume</div></div>';
+    h+='<div><div style="font-family:\'Barlow Condensed\',sans-serif;font-size:26px;font-weight:800;color:var(--morning)">'+Math.round(bw.vol/1000*10)/10+'k</div><div style="font-size:11px;color:var(--muted)">'+wUnit()+' Volume</div></div>';
     h+='<div><div style="font-family:\'Barlow Condensed\',sans-serif;font-size:26px;font-weight:800;color:var(--morning)">'+bw.days+'</div><div style="font-size:11px;color:var(--muted)">Days Done</div></div>';
     h+='</div></div>';
   }
@@ -3524,7 +3753,7 @@ function rProg(){
   if(plateaus.length){
     plateaus.forEach(function(p){
       h+='<div class="plateau-item"><span>'+p.name+'</span>';
-      h+='<span class="plateau-badge">'+p.weight+'kg × '+p.sessions+' sessions</span></div>';
+      h+='<span class="plateau-badge">'+p.weight+wUnit()+' × '+p.sessions+' sessions</span></div>';
     });
   } else {
     h+='<div class="no-data">No plateaus detected in your last 3 sessions per exercise. Keep pushing!</div>';
@@ -3569,7 +3798,7 @@ function rProg(){
   h+='<div class="anl-card">';
   h+='<select class="ex-sel" style="margin:0;width:100%" id="rmSel" onchange="render1RM()">';
   h+='<option value="">— Select exercise —</option>';
-  ALL_EX.filter(function(e){return e.type==='weighted';}).forEach(function(ex){
+  ALL_EX.filter(function(e){return e.type==='weighted'||e.loadable;}).forEach(function(ex){
     h+='<option value="'+ex.id+'">'+ex.name+'</option>';
   });
   h+='</select>';
@@ -3652,7 +3881,7 @@ function rProg(){
   h+='<div class="add-ex-form" id="addExForm">';
   h+='<input class="form-inp" id="cexName" placeholder="Exercise name">';
   h+='<select class="form-sel" id="cexDay"><option value="morning">Morning</option><option value="d1">Day 1 — Upper + Core</option><option value="d2">Day 2 — Lower</option><option value="d3">Day 3 — Push + Core</option><option value="d4">Day 4 — Pull</option><option value="d5">Day 5 — Legs</option></select>';
-  h+='<select class="form-sel" id="cexType"><option value="weighted">Weighted (reps + kg)</option><option value="reps">Reps only</option><option value="time">Timed</option><option value="bands">Resistance Bands</option></select>';
+  h+='<select class="form-sel" id="cexType"><option value="weighted">Weighted (reps + '+wUnit()+')</option><option value="reps">Reps only</option><option value="time">Timed</option><option value="bands">Resistance Bands</option></select>';
   h+='<input class="form-inp" id="cexTarget" placeholder="Target (e.g. 3x12)">';
   h+='<input class="form-inp" id="cexMuscPrimary" placeholder="Primary muscle (optional, e.g. Chest)">';
   h+='<input class="form-inp" id="cexMuscSecondary" placeholder="Secondary muscle (optional)">';
@@ -3666,6 +3895,7 @@ function rProg(){
     h+='<button class="empty-btn" onclick="go(\'today\',document.querySelectorAll(\'.nbtn\')[0])">Log First Session</button></div>';
   }
   h+='<div class="sec-title">Settings</div>';
+  h+=renderTrainingSettings();
   h+='<div class="anl-card">';
   h+='<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px">YouTube API Key</div>';
   h+='<input type="password" id="ytKeyInp" value="'+(localStorage.getItem('pt_yt_key')||'')+'" placeholder="Paste your YouTube Data API v3 key..." style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px 12px;font-size:13px;outline:none;margin-bottom:8px">';
@@ -3719,7 +3949,7 @@ function rExChart(){
     var val=0,unit='';
     src.exercises[exId].sets.forEach(function(s){
       if(s.time!=null&&s.time!==''){val=Math.max(val,+s.time);unit='sec';}
-      else if(s.weight!=null&&s.weight!==''){val=Math.max(val,+s.weight);unit='kg';}
+      else if(s.weight!=null&&s.weight!==''){val=Math.max(val,+s.weight);unit=wUnit();}
       else if(s.reps!=null&&s.reps!==''){val=Math.max(val,+s.reps);unit='reps';}
     });
     if(val>0)sessions.push({date:key,val:val,unit:unit});
@@ -3858,8 +4088,8 @@ function rGuide(){
     h+='<div class="simple-item" style="flex-direction:column;align-items:flex-start;gap:10px">';
     h+='<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:11px;letter-spacing:3px;text-transform:uppercase;color:var(--accent)">Weighted Exercises — Double Progression</div>';
     h+='<div style="font-size:13px;line-height:1.6;color:var(--muted)">Work at a given weight until you complete all target reps across all sets with clean form and 1–2 reps left in the tank. Only then increase weight next session.</div>';
-    h+='<div style="font-size:12px;color:var(--text)">▸ Dumbbells: add <strong>2kg</strong></div>';
-    h+='<div style="font-size:12px;color:var(--text)">▸ EZ bar: add <strong>2.5kg</strong> (using dumbbell plates)</div>';
+    h+='<div style="font-size:12px;color:var(--text)">▸ Dumbbells: add <strong>'+(wUnit()==='lb'?'5 lb':'2 '+wUnit()+'')+'</strong></div>';
+    h+='<div style="font-size:12px;color:var(--text)">▸ EZ bar: add <strong>'+(wUnit()==='lb'?'5 lb':'2.5 '+wUnit()+'')+'</strong> (using dumbbell plates)</div>';
     h+='<div style="font-size:12px;color:var(--danger)">▸ Can\'t hit bottom of rep range on Set 1? Weight is too heavy — drop it.</div>';
     h+='</div>';
     h+='<div class="simple-item" style="flex-direction:column;align-items:flex-start;gap:10px">';
@@ -3962,13 +4192,18 @@ function resetGuideChecks(){
 }
 
 // ── MODAL (LOG SESSION) ────────────────────────────────────────
-function openModal(type,key){
+var mDay=null; // the training day being logged (differs from the schedule when logging on a rest day)
+function openModal(type,key,dayOverride){
+  acquireWakeLock();
   mType=type;mKey=key;
   var date=new Date(key+'T00:00:00');
-  var pd=pplDay(date);
+  var _ex0=(load().logs[key]||{}).ppl;
+  var pd=(type==='ppl'&&(dayOverride||(_ex0&&_ex0.day)))||pplDay(date);
+  mDay=pd;
   var dayKey=type==='morning'?'morning':pd;
   var baseList=type==='morning'?EX.morning:EX[pd];
   var customForDay=loadCustomExercises().filter(function(ex){return ex.day===dayKey;});
+  if(!baseList){showToast('No workout is scheduled for this day','var(--muted)');return;}
   var exList=baseList.concat(customForDay);
   var log=load().logs[key]||{};
   var existing=(type==='morning'?log.morning:log.ppl)||{};
@@ -4051,7 +4286,7 @@ function buildModal(exList,type){
   h+='</div>';
   // ── Warm-up section (PPL days only) ──
   var pd2=null;
-  if(mType==='ppl'&&mKey){try{var d2t=new Date(mKey+'T00:00:00');pd2=pplDay(d2t);}catch(e){}}
+  if(mType==='ppl'&&mKey){try{var d2t=new Date(mKey+'T00:00:00');pd2=mDay||pplDay(d2t);}catch(e){}}
   if(mType==='ppl'&&pd2&&(EX[pd2]||[]).some(function(ex){return AWAY_MAP[ex.id];})){
     var awayActive=isAwayModeActive(pd2);
     h+='<button class="away-toggle-btn'+(awayActive?' active':'')+'" onclick="toggleAwayMode(\''+pd2+'\')">'
@@ -4103,7 +4338,7 @@ function buildModal(exList,type){
     if(SUBS[ex.id])h+='<button class="sub-btn" onclick="event.stopPropagation();togSubModal(\''+ex.id+'\')" title="Swap exercise">🔄</button>';
     h+='<button class="lex-info-btn" onclick="togInfo(\''+activeId+'\',this)" title="How to do it">?</button>';
     h+='</div>';
-    if(warmW>0&&mType!=='morning')h+='<div class="warmup-hint">🔥 Warm-up set: '+warmW+'kg × 10 reps before working sets</div>';
+    if(warmW>0&&mType!=='morning')h+='<div class="warmup-hint">🔥 Warm-up set: '+warmW+wUnit()+' × 10 reps before working sets</div>';
     if(swapped)h+='<div style="font-size:11px;padding:0 20px 6px;color:var(--legs)">🔄 Swapped from: '+ex.name+' — tracked separately from here on</div>';
     var howToEx=swapped||ex;
     h+='<div class="lex-howto" id="info_'+activeId+'">';
@@ -4119,7 +4354,7 @@ function buildModal(exList,type){
       if(recentSess.length){
         var lastSess=recentSess[0];
         var lastSummary=lastSess.sets.map(function(s){
-          if(ex.type==='weighted')return (s.weight||'?')+'kg×'+(s.reps||'?');
+          if(ex.type==='weighted')return (s.weight||'?')+wUnit()+'×'+(s.reps||'?');
           if(ex.type==='time')return (s.time||'?')+'s';
           return (s.reps||'?')+'r';
         }).join(', ');
@@ -4129,7 +4364,7 @@ function buildModal(exList,type){
         recentSess.forEach(function(sess){
           var d=new Date(sess.date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
           var setStrs=sess.sets.map(function(s){
-            if(ex.type==='weighted')return (s.weight||'?')+'kg×'+(s.reps||'?');
+            if(ex.type==='weighted')return (s.weight||'?')+wUnit()+'×'+(s.reps||'?');
             if(ex.type==='time')return (s.time||'?')+'s';
             return (s.reps||'?')+'r';
           });
@@ -4151,14 +4386,14 @@ function buildModal(exList,type){
       } else if(effType==='weighted'){
         h+='<input id="inp_'+activeId+'_'+si+'_reps" class="sinput" type="number" inputmode="decimal" placeholder="reps" value="'+(s.reps||'')+'" oninput="updSet(\''+activeId+'\','+si+',\'reps\',this.value)">';
         h+='<div class="sinput-lbl">reps</div>';
-        h+='<input id="inp_'+activeId+'_'+si+'_weight" class="sinput" type="number" inputmode="decimal" placeholder="kg" value="'+(s.weight||'')+'" oninput="updSet(\''+activeId+'\','+si+',\'weight\',this.value)">';
-        h+='<div class="sinput-lbl">kg</div>';
+        h+='<input id="inp_'+activeId+'_'+si+'_weight" class="sinput" type="number" inputmode="decimal" placeholder="'+wUnit()+'" value="'+(s.weight||'')+'" oninput="updSet(\''+activeId+'\','+si+',\'weight\',this.value)">';
+        h+='<div class="sinput-lbl">'+wUnit()+'</div>';
       } else {
         h+='<input id="inp_'+activeId+'_'+si+'_reps" class="sinput" type="number" inputmode="numeric" placeholder="reps" value="'+(s.reps||'')+'" oninput="updSet(\''+activeId+'\','+si+',\'reps\',this.value)">';
         h+='<div class="sinput-lbl">reps</div>';
         if(ex.loadable&&!effIsBand){
-          h+='<input id="inp_'+activeId+'_'+si+'_weight" class="sinput" type="number" inputmode="decimal" placeholder="+kg" value="'+(s.weight||'')+'" oninput="updSet(\''+activeId+'\','+si+',\'weight\',this.value)">';
-          h+='<div class="sinput-lbl">+kg</div>';
+          h+='<input id="inp_'+activeId+'_'+si+'_weight" class="sinput" type="number" inputmode="decimal" placeholder="+'+wUnit()+'" value="'+(s.weight||'')+'" oninput="updSet(\''+activeId+'\','+si+',\'weight\',this.value)">';
+          h+='<div class="sinput-lbl">+'+wUnit()+'</div>';
         }
       }
       h+='<input id="inp_'+activeId+'_'+si+'_rpe" class="sinput rpe-inp" type="number" inputmode="numeric" placeholder="RPE" min="1" max="10" value="'+(s.rpe||'')+'" oninput="updSet(\''+activeId+'\','+si+',\'rpe\',this.value)">';
@@ -4213,7 +4448,7 @@ function buildModal(exList,type){
   h+='<div class="rpe-help">&#128161; <strong>RPE</strong> (Rate of Perceived Exertion): 1=very easy, 5=moderate, 8=hard, 10=max effort. Optional per set.</div>';
   h+='<div class="notes-lbl">Session Notes</div>';
   var notesPH=mPrevNotes?'Last time: '+mPrevNotes.slice(0,60)+(mPrevNotes.length>60?'…':''):'How did it feel? Anything to note...';
-  h+='<textarea class="notes-area" id="sessionNotes" placeholder="'+notesPH.replace(/"/g,'&quot;')+'" maxlength="500" oninput="mNotes=this.value.slice(0,500);this.value=mNotes;updNotesCount()" onchange="mNotes=this.value.slice(0,500)">'+mNotes+'</textarea>';
+  h+='<textarea class="notes-area" id="sessionNotes" placeholder="'+notesPH.replace(/"/g,'&quot;')+'" maxlength="500" oninput="mNotes=this.value.slice(0,500);this.value=mNotes;updNotesCount()" onchange="mNotes=this.value.slice(0,500)">'+esc(mNotes)+'</textarea>';
   h+='<div class="notes-count" id="notesCount">'+(mNotes?mNotes.length:0)+'/500</div>';
   // ── Session time inputs ──
   h+='<div class="session-time-row">';
@@ -4322,6 +4557,7 @@ function saveSession(){
   });
   var allDone=Object.values(mState).every(function(st){return !!st.done;});
   data.logs[mKey][mType]={done:allDone,exercises:exData};
+  if(mType==='ppl'&&mDay&&!pplDay(new Date(mKey+'T00:00:00')))data.logs[mKey][mType].day=mDay; // logged on a rest day
   // Detect PRs
   var prNames=[];
   Object.entries(mState).forEach(function(e){
@@ -4346,8 +4582,8 @@ function saveSession(){
   // Save warmup/cooldown
   if(mWarmup.length){data.logs[mKey][mType].warmup={items:mWarmup.slice(),done:mWarmup.every(function(x){return x;})};}
   if(mCooldown.length){data.logs[mKey][mType].cooldown={items:mCooldown.slice(),done:mCooldown.every(function(x){return x;})};}
-  localStorage.removeItem('pt_draft');
   save(data);
+  localStorage.removeItem('pt_draft');
   closeModal();
   try{render(curScreen);}catch(re){console.warn('render error',re);}
   if(prNames.length){
@@ -4504,6 +4740,7 @@ function setReason(key,reason){
   save(data);rWeek();
 }
 function closeModal(){
+  releaseWakeLock();
   document.getElementById('overlay').classList.remove('open');
   mType=null;mKey=null;mState={};mNotes='';mPrevNotes='';mStartHHMM='';mEndHHMM='';mStartConfirmed=false;
   stopRestTimer();
@@ -4530,7 +4767,7 @@ function render1RM(){
   var hist=get1RMHistory(exId);
   var best=getBest1RM(exId);
   if(!hist.length){wrap.innerHTML='<div class="no-data">No data logged yet for '+ex.name+'.<br>Log a session with reps and weight to see your estimated 1RM.</div>';return;}
-  var h='<div class="orm-result">'+best+'<span style="font-size:16px">kg</span></div>';
+  var h='<div class="orm-result">'+best+'<span style="font-size:16px">'+wUnit()+'</span></div>';
   h+='<div class="orm-note">Estimated 1RM (Epley Formula)</div>';
   h+='<div class="xbars" style="margin-top:12px">';
   var maxRM=Math.max.apply(null,hist.map(function(h){return h.rm;}));
@@ -4550,16 +4787,17 @@ function renderBA(){
   var rows=getBeforeAfter(d1.value,d2.value);
   if(!rows.length){wrap.innerHTML='<div class="no-data">No matching exercise data for these dates.</div>';return;}
   var h='<div class="ba-row"><div class="ba-col"><div class="ba-date">'+d1.value+'</div>';
-  rows.forEach(function(r){h+='<div class="ba-ex"><span>'+r.name+'</span><span class="ba-val">'+(r.w1?r.r1+'r×'+r.w1+'kg':'—')+'</span></div>';});
+  rows.forEach(function(r){h+='<div class="ba-ex"><span>'+r.name+'</span><span class="ba-val">'+(r.w1?r.r1+'r×'+r.w1+wUnit():'—')+'</span></div>';});
   h+='</div><div class="ba-col"><div class="ba-date">'+d2.value+'</div>';
   rows.forEach(function(r){
     var diff=r.w2-r.w1;
     var col=diff>0?'var(--success)':diff<0?'var(--danger)':'var(--text)';
-    h+='<div class="ba-ex"><span>'+r.name+'</span><span class="ba-val" style="color:'+col+'">'+(r.w2?r.r2+'r×'+r.w2+'kg':'—')+(diff>0?' (+'+diff+'kg)':diff<0?' ('+diff+'kg)':'')+'</span></div>';
+    h+='<div class="ba-ex"><span>'+r.name+'</span><span class="ba-val" style="color:'+col+'">'+(r.w2?r.r2+'r×'+r.w2+wUnit():'—')+(diff>0?' (+'+diff+wUnit()+')':diff<0?' ('+diff+wUnit()+')':'')+'</span></div>';
   });
   h+='</div></div>';
   wrap.innerHTML=h;
 }
+function cleanTxt(s){return String(s).replace(/[<>&"]/g,'').replace(/'/g,'\u2019').trim();}
 function addCustomEx(){
   var name=document.getElementById('cexName');
   var day=document.getElementById('cexDay');
@@ -4571,9 +4809,9 @@ function addCustomEx(){
   var arr=loadCustomExercises();
   var isBand=type.value==='bands';
   var exType=isBand?'reps':type.value;
-  var newEx={id:'custom_'+Date.now(),name:name.value.trim(),type:exType,day:day.value,target:target.value||'3x10',sets:parseInt((target.value||'3x10').split('x')[0])||3,tag:'Custom',isBand:isBand,steps:['Perform the exercise with proper form and controlled movement.'],tip:'Custom exercise added by you.'};
+  var newEx={id:'custom_'+Date.now(),name:cleanTxt(name.value),type:exType,day:day.value,target:target.value||'3x10',sets:parseInt((target.value||'3x10').split('x')[0])||3,tag:'Custom',isBand:isBand,steps:['Perform the exercise with proper form and controlled movement.'],tip:'Custom exercise added by you.'};
   if(muscPrimary&&muscPrimary.value.trim()){
-    newEx.muscles={primary:muscPrimary.value.trim(),secondary:(muscSecondary&&muscSecondary.value.trim())||'—'};
+    newEx.muscles={primary:cleanTxt(muscPrimary.value),secondary:(muscSecondary&&cleanTxt(muscSecondary.value))||'—'};
   }
   arr.push(newEx);
   saveCustomExercises(arr);
@@ -4604,6 +4842,8 @@ function exportData(){
     customEx:localStorage.getItem('pt_custom_ex')||'[]',
     bands:bands,
     calib:calib,
+    unit:wUnit(),step:localStorage.getItem('pt_step'),weights:localStorage.getItem('pt_weights'),pauses:localStorage.getItem('pt_pauses'),
+    walkGoal:localStorage.getItem('pt_walk_goal'),
     programStart:localStorage.getItem('pt_program_start')
   };
   localStorage.setItem('pt_last_backup_session',getMilestoneStats().sessions);
@@ -4642,6 +4882,11 @@ function importData(e){
         if(parsed._meta.font){localStorage.setItem('ppl_font',parsed._meta.font);applyFont(parsed._meta.font);}
         if(parsed._meta.customEx){try{var ce=JSON.parse(parsed._meta.customEx);if(Array.isArray(ce)){ce.forEach(function(x){['name','target'].forEach(function(f){if(typeof x[f]==='string')x[f]=x[f].replace(/[<>"&]/g,'');});});localStorage.setItem('pt_custom_ex',JSON.stringify(ce));}}catch(e){}}
         if(parsed._meta.bands){Object.entries(parsed._meta.bands).forEach(function(e){if(/^band_[\w-]+$/.test(e[0])&&typeof e[1]==='string'&&e[1].length<200)localStorage.setItem(e[0],e[1]);});}
+        if(parsed._meta.unit==='lb'||parsed._meta.unit==='kg')localStorage.setItem('pt_unit',parsed._meta.unit);
+        if(parsed._meta.step&&parseFloat(parsed._meta.step)>0)localStorage.setItem('pt_step',String(parseFloat(parsed._meta.step)));
+        if(typeof parsed._meta.weights==='string'&&/^[\d.,\s;]+$/.test(parsed._meta.weights))localStorage.setItem('pt_weights',parsed._meta.weights);
+        try{var _ps=JSON.parse(parsed._meta.pauses||'[]');if(Array.isArray(_ps)&&_ps.every(function(q){return Array.isArray(q)&&/^\d{4}-\d{2}-\d{2}$/.test(q[0])&&(q[1]===null||/^\d{4}-\d{2}-\d{2}$/.test(q[1]));}))localStorage.setItem('pt_pauses',JSON.stringify(_ps));}catch(_e){}
+        if(parsed._meta.walkGoal&&parseInt(parsed._meta.walkGoal)>0&&parseInt(parsed._meta.walkGoal)<=3000)localStorage.setItem('pt_walk_goal',String(parseInt(parsed._meta.walkGoal)));
         if(parsed._meta.calib){Object.entries(parsed._meta.calib).forEach(function(e){if(/^pt_calib_[\w-]+$/.test(e[0])&&isFinite(parseFloat(e[1])))localStorage.setItem(e[0],String(parseFloat(e[1])));});}
         if(parsed._meta.programStart)localStorage.setItem('pt_program_start',parsed._meta.programStart);
         delete existing._meta;
@@ -4779,6 +5024,58 @@ checkOnboarding();
     localStorage.setItem('pt_migrated_names','1');
   }catch(e){}
 })();
+
+// ── TRAINING SETTINGS (units, weight steps, plan) ──
+function saveStep(v){
+  var n=parseFloat(v);
+  if(n>0&&n<=50){localStorage.setItem('pt_step',String(n));showToast('Smallest jump: '+n+' '+wUnit(),'var(--success)');}
+  else{localStorage.removeItem('pt_step');showToast('Using automatic jumps','var(--muted)');}
+}
+function saveLadder(v){
+  var a=String(v).split(/[\s,;]+/).map(parseFloat).filter(function(x){return x>0;});
+  if(a.length>=2){a.sort(function(x,y){return x-y;});localStorage.setItem('pt_weights',a.join(','));showToast(a.length+' weights saved','var(--success)');}
+  else{localStorage.removeItem('pt_weights');showToast('Weight list cleared','var(--muted)');}
+}
+function convWt(v,f,step){var n=parseFloat(v);return n>0?Math.round(n*f/step)*step:v;}
+function convertWeights(f){
+  var data=load();
+  Object.keys(data.logs).forEach(function(k){
+    var l=data.logs[k];
+    ['ppl','morning'].forEach(function(t){
+      var ex=l[t]&&l[t].exercises;if(!ex)return;
+      Object.keys(ex).forEach(function(id){((ex[id]&&ex[id].sets)||[]).forEach(function(s){if(s.weight!==''&&s.weight!=null)s.weight=convWt(s.weight,f,0.5);});});
+    });
+    if(l.body&&l.body.weight)l.body.weight=convWt(l.body.weight,f,0.1);
+  });
+  save(data);
+  var keys=[];for(var i=0;i<localStorage.length;i++)keys.push(localStorage.key(i));
+  keys.forEach(function(k){
+    if(k.indexOf('pt_calib_')===0||k==='pt_step')localStorage.setItem(k,String(convWt(localStorage.getItem(k),f,0.5)));
+    if(k==='pt_weights')localStorage.setItem(k,localStorage.getItem(k).split(',').map(function(x){return convWt(x,f,0.5);}).join(','));
+  });
+}
+function setUnit(u){
+  if(u===wUnit())return;
+  var conv=confirm('Switch to '+u+'.\n\nOK = convert your saved weights, body weight and settings to '+u+'.\nCancel = keep the numbers and only change the label.');
+  if(conv)convertWeights(u==='lb'?2.20462:1/2.20462);
+  localStorage.setItem('pt_unit',u);
+  refreshScreens();
+  showToast('Units: '+u+(conv?' (converted)':' (label only)'),'var(--success)');
+}
+function renderTrainingSettings(){
+  var u=wUnit(),st=getUserStep(),lad=localStorage.getItem('pt_weights')||'',paused=isPlanPaused(),info=getCycleWeekInfo(now());
+  var lbl='font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-top:14px';
+  var inp='width:100%;box-sizing:border-box;margin-top:6px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px';
+  var h='<div class="anl-card" style="margin:0 20px 12px">';
+  h+='<div style="'+lbl.replace('margin-top:14px','')+'">Units</div><div class="pb-actions" style="margin-top:6px"><button class="'+(u==='kg'?'':'pb-quiet')+'" onclick="setUnit(\'kg\')">kg</button><button class="'+(u==='lb'?'':'pb-quiet')+'" onclick="setUnit(\'lb\')">lb</button></div>';
+  h+='<div style="'+lbl+'">Smallest weight jump ('+u+')</div><input type="number" inputmode="decimal" placeholder="auto" value="'+(st||'')+'" onchange="saveStep(this.value)" style="'+inp+'">';
+  h+='<div style="'+lbl+'">My available weights ('+u+')</div><input type="text" placeholder="e.g. 2, 4, 6, 8, 10, 12.5, 15" value="'+esc(lad.replace(/,/g,', '))+'" onchange="saveLadder(this.value)" style="'+inp+'">';
+  h+='<div class="walk-note">Suggestions snap to this list. Leave it blank to use the default jumps.</div>';
+  h+='<div style="'+lbl+'">Plan</div><div class="walk-note" style="margin-top:6px">'+(paused?'Paused: your cycle is on hold and nothing counts as missed.':(info?'Week '+info.weekNum+' of '+CYCLE_LENGTH+' \u00b7 '+info.plan.name:'Not started yet'))+'</div>';
+  h+='<div class="pb-actions"><button onclick="'+(paused?'resumePlan()':'pausePlan()')+'">'+(paused?'Resume plan':'Pause plan')+'</button></div>';
+  h+='</div>';
+  return h;
+}
 </script>
 <script>
   if ('serviceWorker' in navigator) {

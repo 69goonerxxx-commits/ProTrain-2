@@ -1,4 +1,4 @@
-const CACHE = 'protrain-v8b';
+const CACHE = 'protrain-v8c';
 const FONT_CSS = 'https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap';
 const CORE = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 

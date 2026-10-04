@@ -582,6 +582,20 @@ button:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:2px so
 select.pe-in{width:auto;max-width:140px}
 
 .emj{width:1.15em;height:1.15em;vertical-align:-.22em;display:inline-block;object-fit:contain}
+
+.set-type{width:26px;height:26px;margin-left:6px;border-radius:50%;border:1px solid var(--border);background:var(--surface2);color:var(--muted);font-size:12px;font-weight:700;padding:0}
+.set-type.t-warmup{color:#f59e0b;border-color:#f59e0b}
+.set-type.t-drop{color:#38bdf8;border-color:#38bdf8}
+.set-type.t-failure{color:#f87171;border-color:#f87171}
+.set-x{width:24px;height:24px;margin-left:4px;border:none;background:none;color:var(--muted);font-size:18px;padding:0}
+.ss-badge{font-size:11px;color:var(--morning);margin-top:2px}
+.pe-ctl button.pe-on{border-color:var(--morning);color:var(--morning)}
+.rc-grid{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.rc-chip{font-size:11px;padding:4px 9px;border-radius:999px;border:1px solid var(--border);color:var(--muted)}
+.rc-fresh{border-color:var(--success);color:var(--success)}
+.rc-ready{border-color:var(--legs);color:var(--legs)}
+.rc-recovering{border-color:var(--morning);color:var(--morning)}
+.rc-tired{border-color:var(--danger);color:var(--danger)}
 </style>
 </head>
 <body>
@@ -877,7 +891,7 @@ function getPlanEdits(){
 }
 function applyPlanEdits(){
   var ed=getPlanEdits(),hidden=Array.isArray(ed.hidden)?ed.hidden:[],days=(ed.days&&typeof ed.days==='object')?ed.days:{},placed={};
-  Object.keys(PLAN_OBJ).forEach(function(id){var o=PLAN_OBJ[id],b=PLAN_BASE.ex[id];o.sets=b.sets;o.target=b.target;o.rest=b.rest;});
+  Object.keys(PLAN_OBJ).forEach(function(id){var o=PLAN_OBJ[id],b=PLAN_BASE.ex[id];o.sets=b.sets;o.target=b.target;o.rest=b.rest;o.pairNext=false;});
   PLAN_DAYS.forEach(function(day){(Array.isArray(days[day])?days[day]:[]).forEach(function(id){placed[id]=1;});});
   PLAN_DAYS.forEach(function(day){
     var list=[],seen={};
@@ -893,6 +907,7 @@ function applyPlanEdits(){
     var reps=(typeof c.reps==='string'&&/^\d{1,3}(-\d{1,3})?$/.test(c.reps))?c.reps:'';
     if(m&&(sets||reps)){o.target=(sets||m[1])+'x'+(reps||m[2])+m[3];}
     if(sets)o.sets=sets;
+    if(c.pair===true)o.pairNext=true;
     if(typeof c.rest==='string'&&/^\d{2,3}(-\d{2,3})? sec$|^\d(-\d)? min$/.test(c.rest))o.rest=c.rest;
   });
 }
@@ -1794,7 +1809,7 @@ function getBest(exId){
     if(!src||!src.exercises)return;
     ids.forEach(function(gid){
       if(!src.exercises[gid])return;
-      src.exercises[gid].sets.forEach(function(s){
+      workSets(src.exercises[gid].sets).forEach(function(s){
         if(s.weight&&+s.weight>best.weight)best.weight=+s.weight;
         if(s.reps&&+s.reps>best.reps)best.reps=+s.reps;
         if(s.time&&+s.time>best.time)best.time=+s.time;
@@ -1827,11 +1842,11 @@ function checkNewPR(exId,sets){
     if(!src||!src.exercises)return;
     ids.forEach(function(gid){
       var ex=src.exercises[gid];if(!ex||!ex.sets)return;
-      ex.sets.forEach(function(st){if(st.done)best=Math.max(best,prMetric(type,st,gid));});
+      workSets(ex.sets).forEach(function(st){if(st.done)best=Math.max(best,prMetric(type,st,gid));});
     });
   });
   if(best<=0)return false; // first time logged = baseline, not a PR
-  return sets.some(function(st){return st.done&&prMetric(type,st,exId)>best;});
+  return workSets(sets).some(function(st){return st.done&&prMetric(type,st,exId)>best;});
 }
 // PR count is recomputed from the logs, so edits and deletions can't skew it
 function computePRCount(){
@@ -1845,7 +1860,7 @@ function computePRCount(){
         var info=resolveExById(id);
         var type=info&&info.type?info.type:(ex.sets.some(function(x){return x.weight;})?'weighted':'reps');
         var name=(info&&info.name)||ex.name||id,m=0;
-        ex.sets.forEach(function(x){if(x.done)m=Math.max(m,prMetric(type,x,id));});
+        workSets(ex.sets).forEach(function(x){if(x.done)m=Math.max(m,prMetric(type,x,id));});
         if(m<=0)return;
         if(bests[name]>0&&m>bests[name])count++;
         bests[name]=Math.max(bests[name]||0,m);
@@ -1866,7 +1881,7 @@ function getProgHint(exId,ex){
     var maxW=0;
     ids.forEach(function(gid){
       if(!src.exercises[gid])return;
-      src.exercises[gid].sets.forEach(function(s){if(s.weight)maxW=Math.max(maxW,+s.weight);});
+      workSets(src.exercises[gid].sets).forEach(function(s){if(s.weight)maxW=Math.max(maxW,+s.weight);});
     });
     if(maxW>0)weights.push(maxW);
   });
@@ -1899,7 +1914,7 @@ function getSetsForAbsoluteWeek(exId,isMorn,startDateStr,totalWeek){
     var info=getCycleWeekInfo(new Date(e[0]+'T00:00:00'));
     if(!info||info.totalWeek!==totalWeek)return;
     var src=isMorn?e[1].morning:e[1].ppl;
-    if(src&&src.exercises&&src.exercises[exId]&&src.exercises[exId].sets)found=src.exercises[exId].sets;
+    if(src&&src.exercises&&src.exercises[exId]&&src.exercises[exId].sets)found=workSets(src.exercises[exId].sets);
   });
   return found;
 }
@@ -1972,7 +1987,7 @@ function getRec(exId,ex,mode){
   Object.entries(load().logs).sort().forEach(function(e){
     if(isDeloadDate(e[0]))return; // deload weights are not a baseline
     var src=isMorn?e[1].morning:e[1].ppl;
-    if(src&&src.exercises&&src.exercises[exId]&&src.exercises[exId].sets)sessions.push(src.exercises[exId].sets);
+    if(src&&src.exercises&&src.exercises[exId]&&src.exercises[exId].sets){var _ws=workSets(src.exercises[exId].sets);if(_ws.length)sessions.push(_ws);}
   });
   var _inf=resolveExById(exId),_bid=_inf&&_inf.isAlt?_inf.baseId:exId;
   var sk=lw?0:starterWt(exId,_bid);
@@ -2052,7 +2067,7 @@ function calcSessionVol(log,type){
   if(!log||!log[type]||!log[type].exercises)return 0;
   var v=0;
   Object.values(log[type].exercises).forEach(function(ex){
-    if(ex.sets)ex.sets.forEach(function(s){if(s.done&&s.reps&&s.weight)v+=(+s.reps)*(+s.weight);});
+    if(ex.sets)hardSets(ex.sets).forEach(function(s){if(s.done&&s.reps&&s.weight)v+=(+s.reps)*(+s.weight);});
   });
   return Math.round(v);
 }
@@ -2110,7 +2125,7 @@ function getMuscleWeeklySets(){
       var family=EX_ALT_MAP[ex.id]||[ex.id];
       family.forEach(function(fid){
         var exLog=log.ppl.exercises[fid];
-        var done=exLog&&exLog.sets?exLog.sets.filter(function(s){return!!s.done;}).length:0;
+        var done=exLog&&exLog.sets?hardSets(exLog.sets).filter(function(s){return!!s.done;}).length:0;
         if(!done)return;
         var info=resolveExById(fid);
         if(!info||!info.muscles)return;
@@ -2169,7 +2184,7 @@ function getBest1RM(exId){
   Object.values(load().logs).forEach(function(log){
     var src=isMorn?log.morning:log.ppl;
     if(!src||!src.exercises||!src.exercises[exId])return;
-    src.exercises[exId].sets.forEach(function(s){
+    workSets(src.exercises[exId].sets).forEach(function(s){
       var el=effLoad(exId,s);if(el>0&&s.reps){var rm=calc1RM(el,+s.reps);if(rm>best)best=rm;}
     });
   });
@@ -2181,7 +2196,7 @@ function get1RMHistory(exId){
     var src=isMorn?e[1].morning:e[1].ppl;
     if(!src||!src.exercises||!src.exercises[exId])return;
     var best=0;
-    src.exercises[exId].sets.forEach(function(s){var el=effLoad(exId,s);if(el>0&&s.reps){var rm=calc1RM(el,+s.reps);if(rm>best)best=rm;}});
+    workSets(src.exercises[exId].sets).forEach(function(s){var el=effLoad(exId,s);if(el>0&&s.reps){var rm=calc1RM(el,+s.reps);if(rm>best)best=rm;}});
     if(best>0)hist.push({date:e[0].slice(5),rm:best});
   });
   return hist.slice(-10);
@@ -2194,7 +2209,7 @@ function getPlateaus(){
       var src=isMorn?e[1].morning:e[1].ppl;
       if(!src||!src.exercises||!src.exercises[ex.id])return;
       var maxW=0;
-      src.exercises[ex.id].sets.forEach(function(s){if(s.weight)maxW=Math.max(maxW,+s.weight);});
+      workSets(src.exercises[ex.id].sets).forEach(function(s){if(s.weight)maxW=Math.max(maxW,+s.weight);});
       if(maxW>0)sessions.push(maxW);
     });
     if(sessions.length>=3){
@@ -2231,8 +2246,8 @@ function getBeforeAfter(d1,d2){
     var src1=log1.ppl,src2=log2.ppl;
     if(!src1&&!src2)return;
     var w1=0,w2=0,r1=0,r2=0;
-    if(src1&&src1.exercises&&src1.exercises[ex.id])src1.exercises[ex.id].sets.forEach(function(s){if(s.weight>w1){w1=+s.weight;r1=+s.reps||0;}});
-    if(src2&&src2.exercises&&src2.exercises[ex.id])src2.exercises[ex.id].sets.forEach(function(s){if(s.weight>w2){w2=+s.weight;r2=+s.reps||0;}});
+    if(src1&&src1.exercises&&src1.exercises[ex.id])workSets(src1.exercises[ex.id].sets).forEach(function(s){if(s.weight>w1){w1=+s.weight;r1=+s.reps||0;}});
+    if(src2&&src2.exercises&&src2.exercises[ex.id])workSets(src2.exercises[ex.id].sets).forEach(function(s){if(s.weight>w2){w2=+s.weight;r2=+s.reps||0;}});
     if(w1>0||w2>0)rows.push({name:ex.name,w1:w1,r1:r1,w2:w2,r2:r2});
   });
   return rows;
@@ -2242,7 +2257,7 @@ function getLastWeight(exId){
   Object.entries(load().logs).sort().forEach(function(e){
     var src=isMorn?e[1].morning:e[1].ppl;
     if(!src||!src.exercises||!src.exercises[exId])return;
-    src.exercises[exId].sets.forEach(function(s){if(s.weight)last=Math.max(last,+s.weight);});
+    workSets(src.exercises[exId].sets).forEach(function(s){if(s.weight)last=Math.max(last,+s.weight);});
   });
   return last;
 }
@@ -2254,7 +2269,7 @@ function getRecentSessions(exId,n){
     if(!src||!src.exercises)return;
     ids.forEach(function(id){
       if(!src.exercises[id]||!src.exercises[id].sets)return;
-      var sets=src.exercises[id].sets.filter(function(s){return s.weight||s.reps||s.time;});
+      var sets=workSets(src.exercises[id].sets).filter(function(s){return s.weight||s.reps||s.time;});
       if(sets.length)out.push({date:e[0],sets:sets});
     });
   });
@@ -2275,7 +2290,7 @@ function getMuscle4WeekFreq(){
         var family=EX_ALT_MAP[ex.id]||[ex.id];
         family.forEach(function(fid){
           var exLog=log.ppl.exercises[fid];
-          var done=exLog&&exLog.sets?exLog.sets.filter(function(s){return!!s.done;}).length:0;
+          var done=exLog&&exLog.sets?hardSets(exLog.sets).filter(function(s){return!!s.done;}).length:0;
           if(!done)return;
           var info=resolveExById(fid);
           if(!info||!info.muscles)return;
@@ -2363,7 +2378,7 @@ function swapExercise(exId,subOrIdx){
 // ── TOAST ──────────────────────────────────────────────────────
 function refreshSubContext(){
   if(document.getElementById('overlay').classList.contains('open')&&mType&&mKey){
-    var date=new Date(mKey+'T00:00:00'),pd=pplDay(date);
+    var date=new Date(mKey+'T00:00:00'),pd=(mType==='ppl'&&mDay)||pplDay(date);
     var baseList=mType==='morning'?EX.morning:(EX[pd]||[]);
     var customForDay=loadCustomExercises().filter(function(ex){return ex.day===(mType==='morning'?'morning':pd);});
     buildModal(baseList.concat(customForDay),mType);
@@ -2504,7 +2519,7 @@ function recentAvgRpe(days){
     var d=new Date(t);d.setDate(t.getDate()-i);
     var src=logs[toKey(d)]&&logs[toKey(d)].ppl;
     if(!src||!src.exercises)continue;
-    Object.keys(src.exercises).forEach(function(id){((src.exercises[id]||{}).sets||[]).forEach(function(s){if(s.done&&+s.rpe>0){n++;sum+=+s.rpe;}});});
+    Object.keys(src.exercises).forEach(function(id){hardSets((src.exercises[id]||{}).sets).forEach(function(s){if(s.done&&+s.rpe>0){n++;sum+=+s.rpe;}});});
   }
   return n>=12?sum/n:0;
 }
@@ -2630,6 +2645,68 @@ function ciSave(){
 }
 function ciOff(){localStorage.setItem('pt_checkin_off','1');ciClose();showToast('Check-ins off. You can turn them on in Settings.','var(--muted)');}
 function toggleCheckin(){if(localStorage.getItem('pt_checkin_off')==='1')localStorage.removeItem('pt_checkin_off');else localStorage.setItem('pt_checkin_off','1');refreshScreens();}
+
+// ── SET TYPES: warm-up and drop sets never count toward progression, PRs or 1RM; warm-ups are not counted as volume ──
+function isWorkSet(s){return !!s&&s.type!=='warmup'&&s.type!=='drop';}
+function workSets(a){return(a||[]).filter(isWorkSet);}
+function hardSets(a){return(a||[]).filter(function(s){return !!s&&s.type!=='warmup';});}
+
+// ── RECOVERY: how ready each muscle is, from recent sessions, check-ins and long rides ──
+var REC_WINDOW={'Quads':72,'Hamstrings':72,'Glutes':72,'Calves':48,'Chest':60,'Lats':60,'Traps':48,'Front Delts':48,'Side Delts':48,'Rear Delts':48,'Biceps':48,'Triceps':48};
+var REC_LEGS=['Quads','Hamstrings','Glutes','Calves'];
+function cyclingMinutesSince(hours){
+  var t=now(),m=0,logs=load().logs;
+  for(var i=0;i<=Math.ceil(hours/24);i++){
+    var d=new Date(t);d.setDate(t.getDate()-i);
+    var c=(logs[toKey(d)]||{}).cycling;if(!c)continue;
+    ['morning','afternoon'].forEach(function(l){if(c[l]&&c[l].done&&c[l].min)m+=+c[l].min;});
+    (c.extra||[]).forEach(function(e){if(e&&e.min)m+=+e.min;});
+  }
+  return m;
+}
+function recoveryNow(){
+  var logs=load().logs,keys=Object.keys(logs).sort().reverse(),t=now().getTime(),last={},today=dnum(now()),sore=false;
+  keys.forEach(function(k){
+    var kd=dnum(new Date(k+'T00:00:00'));if(today-kd>14||kd>today)return;
+    var l=logs[k],src=l.ppl,credit={};
+    if(l.checkin&&today-kd<=3&&(l.checkin.sore===3||l.checkin.joint>=2))sore=true;
+    if(!src||!src.exercises)return;
+    Object.keys(src.exercises).forEach(function(id){
+      var ex=src.exercises[id],info=resolveExById(id);if(!ex||!info||!info.muscles)return;
+      var n=hardSets(ex.sets).filter(function(s){return !!s.done;}).length;if(!n)return;
+      var cr=muscleCredits(info.muscles);
+      Object.keys(cr).forEach(function(m){credit[m]=(credit[m]||0)+n*cr[m];});
+    });
+    Object.keys(credit).forEach(function(m){if(credit[m]>=1&&!last[m])last[m]={date:k,credit:credit[m]};});
+  });
+  var cyc=cyclingMinutesSince(36),out=[];
+  Object.keys(REC_WINDOW).forEach(function(m){
+    var L=last[m];if(!L)return;
+    var hrs=(t-new Date(L.date+'T12:00:00').getTime())/36e5;
+    var win=REC_WINDOW[m]*(0.8+Math.min(0.6,L.credit*0.06));
+    if(sore)win*=1.2;
+    if(cyc>=40&&REC_LEGS.indexOf(m)>=0)win+=12;
+    var pct=Math.max(0,Math.min(100,Math.round(hrs/win*100)));
+    out.push({name:m,pct:pct,status:pct>=100?'fresh':(pct>=70?'ready':(pct>=40?'recovering':'tired')),credit:Math.round(L.credit*10)/10});
+  });
+  out.sort(function(a,b){return a.pct-b.pct;});
+  return out;
+}
+function recoveryAdvice(){
+  var pd=pplDay(now());if(!pd||!MUSCLE_TARGET[pd])return '';
+  var list=recoveryNow(),by={};list.forEach(function(r){by[r.name]=r;});
+  var low=MUSCLE_TARGET[pd].p.map(function(k){return ALL_MUSCLES[k];}).filter(function(n){return by[n]&&by[n].pct<70;});
+  if(low.length)return 'Still recovering for today: '+low.join(', ')+'. Consider lighter loads, or move this workout a day.';
+  return list.length?'The muscles for today are ready.':'';
+}
+function recoveryCard(){
+  var list=recoveryNow();if(!list.length)return '';
+  var h='<div class="plan-banner" style="border-left-color:var(--success)"><div class="pb-title">Recovery</div><div class="rc-grid">';
+  list.forEach(function(r){h+='<span class="rc-chip rc-'+r.status+'">'+esc(r.name)+' '+r.pct+'%</span>';});
+  h+='</div>';
+  var adv=recoveryAdvice();if(adv)h+='<div class="pb-sub" style="margin-top:8px">'+esc(adv)+'</div>';
+  return h+'</div>';
+}
 // ── REST TIMER ─────────────────────────────────────────────────
 function parseRestSecs(restStr){
   if(!restStr)return 60;
@@ -2796,7 +2873,7 @@ function finishExTmr(secsToLog){
     mState[id].sets[si].done=true;
     var chk=document.getElementById('setchk_'+id+'_'+si);
     if(chk)chk.classList.add('done');
-    var allDone=mState[id].sets.every(function(s){return !!s.done;});
+    var allDone=workSets(mState[id].sets).every(function(s){return !!s.done;});
     mState[id].done=allDone;
     var mainChk=document.getElementById('exchk_'+id);
     if(mainChk)mainChk.classList.toggle('done',allDone);
@@ -2895,8 +2972,10 @@ function copyLastSession(){
   Object.keys(mState).forEach(function(id){
     var prev=found.exercises[id];
     if(!prev||!prev.sets||!prev.sets.length)return;
+    var _pw=workSets(prev.sets),_wi=0;
     mState[id].sets.forEach(function(s,si){
-      var prevSet=prev.sets[si];
+      if(s.type==='warmup')return;
+      var prevSet=_pw[_wi++];
       if(!prevSet)return; // no corresponding old set at this index — leave current default as-is
       ['reps','weight','time','rpe'].forEach(function(field){
         if(prevSet[field]!=null&&prevSet[field]!=='')s[field]=prevSet[field];
@@ -3038,6 +3117,7 @@ function _rToday(){
   // Phase card
   var ph=getCurrentPhase();
   h+=planBanners();
+  h+=recoveryCard();
   if(ph){
     h+='<div class="phase-card" style="--phase-color:'+ph.color+'">';
     h+='<div class="phase-tag">Training Phase</div>';
@@ -3473,6 +3553,10 @@ function renderChangelog(){
       'Removed hard-coded personal wording (rooftop, school) from tips and the commute labels',
       'Replanned for balance: Upper day trimmed from 11 to 7 exercises; curls moved to Pull day; core now spread over four days; side delts get 4 sets on Upper and Push plus a lateral raise on Pull',
       'Windows-style emoji (Microsoft Fluent Emoji) everywhere, on any phone; switch back to your phone default in Settings',
+      'Set types: tag sets as warm-up, drop or failure (tap the dot beside a set); warm-ups and drops stay out of progression, PRs and 1RM, and you can add a warm-up set with one tap',
+      'Supersets: in Edit plan, tick Superset with next; the log jumps between the pair after each set',
+      'Recovery card on Today shows how ready each muscle is (from recent sets, check-ins and long rides) and flags today\'s workout if it is still recovering',
+      'Export CSV (Settings) for spreadsheets',
       'Each suggested weight now says why (for example: every set hit 12 reps at RPE 8, so add 2 kg)',
       'Edit plan (Progress > Settings): change sets, reps and rest, reorder, move or hide exercises, and set weekly set targets per muscle; reset any time',
       'Quick post-workout check-in (pump, soreness, joints) feeds deload suggestions; weekly muscle volume now shows your target ranges and advice',
@@ -3566,7 +3650,7 @@ function getStructureMismatches(){
         var baseEx=ALL_EX.find(function(e){return e.id===baseId;});
         if(!baseEx)return;
         var targetLen=baseEx.sets||3;
-        var storedLen=(sess.exercises[id].sets||[]).length;
+        var storedLen=workSets(sess.exercises[id].sets).length;
         if(storedLen!==targetLen){
           out.push({date:key,type:type,name:sess.exercises[id].name||info.name,storedLen:storedLen,targetLen:targetLen});
         }
@@ -3824,7 +3908,7 @@ function rProg(){
       allLogs.forEach(function(e){
         var src=isMorn?e[1].morning:e[1].ppl;
         if(!src||!src.exercises||!src.exercises[ex.id])return;
-        src.exercises[ex.id].sets.forEach(function(s){
+        workSets(src.exercises[ex.id].sets).forEach(function(s){
           if(s.done&&s.weight&&s.reps){
             var w=+s.weight,r=+s.reps,v=w*r;
             if(w>bestW||(w===bestW&&r>bestReps)){bestW=w;bestReps=r;bestDate=e[0];}
@@ -4105,7 +4189,7 @@ function rExChart(){
     var src=isMorn?log.morning:log.ppl;
     if(!src||!src.exercises||!src.exercises[exId]||!src.exercises[exId].sets||!src.exercises[exId].sets.length)return;
     var val=0,unit='';
-    src.exercises[exId].sets.forEach(function(s){
+    workSets(src.exercises[exId].sets).forEach(function(s){
       if(s.time!=null&&s.time!==''){val=Math.max(val,+s.time);unit='sec';}
       else if(s.weight!=null&&s.weight!==''){val=Math.max(val,+s.weight);unit=wUnit();}
       else if(s.reps!=null&&s.reps!==''){val=Math.max(val,+s.reps);unit='reps';}
@@ -4350,6 +4434,7 @@ function resetGuideChecks(){
 }
 
 // ── MODAL (LOG SESSION) ────────────────────────────────────────
+var mExList=[],mPairs={},mPairsRev={};
 var mDay=null; // the training day being logged (differs from the schedule when logging on a rest day)
 function openModal(type,key,dayOverride){
   acquireWakeLock();
@@ -4431,6 +4516,8 @@ function openModal(type,key,dayOverride){
 }
 function buildModal(exList,type){
   var h='';
+  mExList=exList;mPairs={};mPairsRev={};
+  exList.forEach(function(ex,i){if(ex.pairNext&&exList[i+1]){var a=getActiveId(ex.id),b=getActiveId(exList[i+1].id);mPairs[a]=b;mPairsRev[b]=a;}});
   // ── Floating rest timer (sticky top of modal body) ──
   h+='<div class="rest-timer-float" id="restTimerFloat">';
   h+='<div class="rt-countdown" id="rtCountdown">0s</div>';
@@ -4489,6 +4576,8 @@ function buildModal(exList,type){
     var bl=bestLabel(activeId,effEx);
     var ph=getProgHint(activeId,effEx);
     h+='<div style="flex:1"><div class="lex-name">'+displayEx.name+'</div>';
+    if(mPairs[activeId])h+='<div class="ss-badge">Superset: alternate with the next exercise</div>';
+    if(mPairsRev[activeId])h+='<div class="ss-badge">Superset: do straight after the previous exercise</div>';
     if(ex.muscles)h+='<div style="font-size:11px;color:var(--muted);margin-top:1px"><span style="color:var(--accent)">&#9679;</span> '+ex.muscles.primary+' <span style="opacity:.4">·</span> '+ex.muscles.secondary+'</div>';
     if(bl)h+='<div style="font-size:11px;color:var(--muted);margin-top:2px;font-family:\'Barlow Condensed\',sans-serif;letter-spacing:1px">'+bl+'</div>';
     h+='</div>';
@@ -4496,7 +4585,7 @@ function buildModal(exList,type){
     if(SUBS[ex.id])h+='<button class="sub-btn" onclick="event.stopPropagation();togSubModal(\''+ex.id+'\')" title="Swap exercise">🔄</button>';
     h+='<button class="lex-info-btn" onclick="togInfo(\''+activeId+'\',this)" title="How to do it">?</button>';
     h+='</div>';
-    if(warmW>0&&mType!=='morning')h+='<div class="warmup-hint">🔥 Warm-up set: '+warmW+wUnit()+' × 10 reps before working sets</div>';
+    if(warmW>0&&mType!=='morning'&&effType==='weighted'&&!st.sets.some(function(q){return q.type==='warmup';}))h+='<button class="autofill-btn" onclick="addWarmupSet(\''+activeId+'\')">+ Add warm-up set (about '+roundLoad(lastW*0.5)+' '+wUnit()+' x 10)</button>';
     if(swapped)h+='<div style="font-size:11px;padding:0 20px 6px;color:var(--legs)">🔄 Swapped from: '+ex.name+' — tracked separately from here on</div>';
     var howToEx=swapped||ex;
     h+='<div class="lex-howto" id="info_'+activeId+'">';
@@ -4537,8 +4626,10 @@ function buildModal(exList,type){
     if(_rw)h+='<div class="rec-why">'+esc(_rw)+'</div>';
     h+='<div class="set-inputs">';
     st.sets.forEach(function(s,si){
-      var lbl=ex.sideLabels?(ex.sideLabels[si]||'S'+(si+1)):(ex.sets>1?'S'+(si+1):'x');
+      var lbl=ex.sideLabels?(ex.sideLabels[si]||'S'+(si+1)):(ex.sets>1||st.sets.length>1?'S'+(st.sets.slice(0,si).filter(function(q){return q.type!=='warmup';}).length+1):'x');
+      if(!ex.sideLabels&&s.type==='warmup')lbl='W';
       h+='<div class="set-row"><button id="setchk_'+activeId+'_'+si+'" aria-label="Mark set done" class="set-chk'+(st.sets[si].done?' done':'')+'" onclick="togSet(\''+activeId+'\','+si+',this)">&#10003;</button><div class="set-lbl">'+lbl+'</div>';
+      h+=setTypeBtn(activeId,si,s);
       if(effType==='time'){
         h+='<input id="inp_'+activeId+'_'+si+'_time" class="sinput" type="number" inputmode="numeric" placeholder="sec" value="'+(s.time||'')+'" oninput="updSet(\''+activeId+'\','+si+',\'time\',this.value)">';
         h+='<div class="sinput-lbl">sec</div>';
@@ -4765,7 +4856,7 @@ function togSet(id,si,btn){
   var isSideBased=!!(baseEx&&baseEx.sideLabels);
   // Copy from previous set when ticking ON (not unticking), for sets after the first —
   // skipped for side-based exercises (Left/Right/Chin Tuck are distinct, not repeats)
-  if(nowDone&&si>0&&!isSideBased){
+  if(nowDone&&si>0&&!isSideBased&&mState[id].sets[si-1].type!=='warmup'&&mState[id].sets[si].type!=='warmup'){
     var prev=mState[id].sets[si-1];
     var curr=mState[id].sets[si];
     var prevHasData=(prev.reps!=null&&prev.reps!=='')||(prev.weight!=null&&prev.weight!=='')||(prev.time!=null&&prev.time!=='');
@@ -4782,10 +4873,11 @@ function togSet(id,si,btn){
     }
   }
   mState[id].sets[si].done=nowDone;
+  ssAdvance(id,si,nowDone);
   btn.classList.toggle('done',nowDone);
   btn.classList.add('popped');
   setTimeout(function(){btn.classList.remove('popped');},300);
-  var allDone=mState[id].sets.every(function(s){return !!s.done;});
+  var allDone=workSets(mState[id].sets).every(function(s){return !!s.done;});
   mState[id].done=allDone;
   var mainChk=document.getElementById('exchk_'+id);
   if(mainChk)mainChk.classList.toggle('done',allDone);
@@ -4793,6 +4885,49 @@ function togSet(id,si,btn){
     var lexDiv=mainChk&&mainChk.closest?mainChk.closest('.lex'):null;
     if(lexDiv){lexDiv.classList.add('flash-done');setTimeout(function(){lexDiv.classList.remove('flash-done');},600);}
   }
+}
+function setTypeBtn(id,si,s){
+  var t=s.type||'',L={'':'\u00b7',warmup:'W',drop:'D',failure:'F'}[t]||'\u00b7';
+  var names={'':'normal',warmup:'warm-up',drop:'drop set',failure:'to failure'};
+  var h='<button class="set-type'+(t?' t-'+t:'')+'" aria-label="Set type: '+names[t]+'. Tap to change" onclick="cycleSetType(\''+id+'\','+si+')">'+L+'</button>';
+  if(t==='warmup')h+='<button class="set-x" aria-label="Remove warm-up set" onclick="removeSet(\''+id+'\','+si+')">&times;</button>';
+  return h;
+}
+function rebuildModal(){
+  var mb=document.getElementById('mBody'),top=mb?mb.scrollTop:0;
+  buildModal(mExList,mType);
+  if(mb)mb.scrollTop=top;
+}
+function cycleSetType(id,si){
+  var s=mState[id]&&mState[id].sets[si];if(!s)return;
+  var order=['','warmup','drop','failure'],i=order.indexOf(s.type||'');
+  var nx=order[(i+1)%order.length];
+  if(nx)s.type=nx;else delete s.type;
+  mState[id].done=workSets(mState[id].sets).every(function(q){return !!q.done;});
+  rebuildModal();
+}
+function addWarmupSet(id){
+  if(!mState[id])return;
+  var w=roundLoad((getLastWeight(id)||0)*0.5);
+  mState[id].sets.unshift({type:'warmup',reps:10,weight:w>0?w:'',done:false});
+  rebuildModal();
+}
+function removeSet(id,si){
+  var s=mState[id]&&mState[id].sets[si];if(!s||s.type!=='warmup')return;
+  mState[id].sets.splice(si,1);rebuildModal();
+}
+function setWorkIndex(id,si){return mState[id].sets.slice(0,si).filter(function(q){return q.type!=='warmup';}).length;}
+function setIndexAtWork(id,wi){var c=-1;for(var i=0;i<mState[id].sets.length;i++){if(mState[id].sets[i].type!=='warmup'){c++;if(c===wi)return i;}}return -1;}
+// supersets: after a set, jump to the partner exercise's matching set
+function ssAdvance(id,si,nowDone){
+  if(!nowDone||!mState[id]||!mState[id].sets[si]||mState[id].sets[si].type==='warmup')return;
+  var wi=setWorkIndex(id,si),target=null,tgi=-1;
+  if(mPairs[id]&&mState[mPairs[id]]){target=mPairs[id];tgi=setIndexAtWork(target,wi);}
+  else if(mPairsRev[id]&&mState[mPairsRev[id]]){target=mPairsRev[id];tgi=setIndexAtWork(target,wi+1);}
+  if(target==null||tgi<0)return;
+  var row=document.getElementById('setchk_'+target+'_'+tgi);
+  if(row&&row.scrollIntoView)row.scrollIntoView({block:'center',behavior:'smooth'});
+  ['reps','weight','time'].some(function(f){var el=document.getElementById('inp_'+target+'_'+tgi+'_'+f);if(el&&el.focus){el.focus();return true;}return false;});
 }
 function fillRec(exId,mode){
   var exInfo=resolveExById(exId);
@@ -4802,14 +4937,23 @@ function fillRec(exId,mode){
   if(!ex)return;
   var effEx=exInfo.isAlt?Object.assign({},ex,{type:exInfo.type||ex.type}):ex;
   var rec=getRec(exId,effEx,mode||'smart');
-  mState[exId].sets=rec;
+  // keep warm-up rows, set-type tags and extra drop sets the person already added
+  var old=mState[exId].sets,wu=old.filter(function(q){return q.type==='warmup';}),wk=old.filter(function(q){return q.type!=='warmup';});
+  rec.forEach(function(s,i){if(wk[i]&&wk[i].type)s.type=wk[i].type;});
+  var extra=wk.slice(rec.length).filter(function(q){return q.type==='drop';});
+  var typed=wu.length>0||extra.length>0||rec.some(function(s){return !!s.type;});
+  mState[exId].sets=wu.concat(rec,extra);
+  var hasRealData=rec.some(function(s){return (s.reps&&s.reps!=='')||(s.weight&&s.weight!=='')||(s.time&&s.time!=='');});
+  if(typed){
+    if(hasRealData){rec.forEach(function(s){s.done=true;});mState[exId].done=true;}
+    rebuildModal();return;
+  }
   rec.forEach(function(s,si){
     if(s.time!=null){var el=document.getElementById('inp_'+exId+'_'+si+'_time');if(el){el.value=s.time||'';updSet(exId,si,'time',el.value);}}
     if(s.reps!=null){var er=document.getElementById('inp_'+exId+'_'+si+'_reps');if(er){er.value=s.reps||'';updSet(exId,si,'reps',er.value);}}
     if(s.weight!=null){var ew=document.getElementById('inp_'+exId+'_'+si+'_weight');if(ew){ew.value=s.weight||'';updSet(exId,si,'weight',ew.value);}}
   });
   // Auto-mark exercise as done when filled
-  var hasRealData=rec.some(function(s){return (s.reps&&s.reps!=='')||(s.weight&&s.weight!=='')||(s.time&&s.time!=='');});
   if(hasRealData){
     mState[exId].done=true;
     var mc=document.getElementById('exchk_'+exId);
@@ -5247,10 +5391,39 @@ function renderTrainingSettings(){
   h+='<div style="'+lbl+'">Plan</div><div class="walk-note" style="margin-top:6px">'+(paused?'Paused: your cycle is on hold and nothing counts as missed.':(info?'Week '+info.weekNum+' of '+CYCLE_LENGTH+' \u00b7 '+info.plan.name:'Not started yet'))+'</div>';
   h+='<div class="pb-actions"><button onclick="'+(paused?'resumePlan()':'pausePlan()')+'">'+(paused?'Resume plan':'Pause plan')+'</button></div>';
   h+='<div style="'+lbl+'">Training plan</div><div class="pb-actions" style="margin-top:6px"><button onclick="openPlanEditor()">Edit plan &amp; targets</button><button class="pb-quiet" onclick="toggleCheckin()">Check-in: '+(localStorage.getItem('pt_checkin_off')==='1'?'off':'on')+'</button></div>';
+  h+='<div style="'+lbl+'">Your data</div><div class="pb-actions" style="margin-top:6px"><button class="pb-quiet" onclick="exportCsv()">Export CSV (spreadsheet)</button></div>';
   h+='<div style="'+lbl+'">Look</div><div class="pb-actions" style="margin-top:6px"><button onclick="toggleEmoji()">Emoji: '+(emojiStyle()==='native'?'phone default':'Windows style')+'</button></div>';
   h+='<div class="walk-note">Windows-style emoji use Microsoft\'s open-source Fluent Emoji (MIT licence). They download once, then work offline. <button class="walk-goal-btn" onclick="showEmojiStatus()">check emoji status</button></div><div id="emjStatus" class="walk-note" style="word-break:break-all"></div>';
   h+='</div>';
   return h;
+}
+
+// ── CSV EXPORT (one row per set, opens in any spreadsheet) ──
+function csvCell(v){var s=(v==null?'':String(v));return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
+function buildCsv(){
+  var rows=[['date','session','day','exercise','set','set_type','weight','weight_unit','reps','seconds','rpe','done']];
+  var logs=load().logs,unit=wUnit();
+  Object.keys(logs).sort().forEach(function(k){
+    ['morning','ppl'].forEach(function(t){
+      var s=logs[k][t];if(!s||!s.exercises)return;
+      var dayKey=t==='ppl'?(s.day||pplDay(new Date(k+'T00:00:00'))):'morning';
+      var dayName=(dayKey&&PPL[dayKey]&&PPL[dayKey].name)||(t==='morning'?'Morning routine':'');
+      Object.keys(s.exercises).forEach(function(id){
+        var ex=s.exercises[id];
+        (ex.sets||[]).forEach(function(st,i){
+          rows.push([k,t==='ppl'?'workout':'morning',dayName,ex.name||id,i+1,st.type||'normal',st.weight,st.weight!==''&&st.weight!=null?unit:'',st.reps,st.time,st.rpe,st.done?'yes':'no']);
+        });
+      });
+    });
+  });
+  return rows.map(function(r){return r.map(csvCell).join(',');}).join('\n');
+}
+function exportCsv(){
+  var blob=new Blob(['\ufeff'+buildCsv()],{type:'text/csv'});
+  var a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='protrain-sets-'+toKey(now())+'.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  showToast('CSV exported','var(--success)');
 }
 // ── PLAN EDITOR (overlay): edit sets/reps/rest, reorder, move, hide, and weekly set targets ──
 var REST_CHOICES=['45 sec','60 sec','60-90 sec','90 sec','2-3 min','3-4 min'];
@@ -5266,6 +5439,7 @@ function peReps(id,v){
   var pr=v.split('-').map(Number);if(pr.length===2&&pr[0]>pr[1]){showToast('The first number must be the smaller one','var(--danger)');peRender();return;}
   var e=peEdits();peCfg(e,id).reps=v;peCommit(e);
 }
+function pePair(id){var e=peEdits(),c=peCfg(e,id);c.pair=!(c.pair===true);peCommit(e);}
 function peRest(id,v){var e=peEdits();peCfg(e,id).rest=v;peCommit(e);}
 function peMove(id,dir){
   var e=peEdits();peFreeze(e);
@@ -5303,7 +5477,7 @@ function peBandsReset(){localStorage.removeItem('pt_vol_bands');peRender();refre
 function peClose(){var el=document.getElementById('planEditor');if(el){el.style.display='none';el.innerHTML='';}}
 function peRow(x,day,ix,len){
   var base=PLAN_BASE.ex[x.id]||{},m=String(x.target||'').match(/^(\d+)x(\d+(?:-\d+)?)(.*)$/);
-  var changed=(x.sets!==base.sets||x.target!==base.target||x.rest!==base.rest);
+  var changed=(x.sets!==base.sets||x.target!==base.target||x.rest!==base.rest||!!x.pairNext);
   var h='<div class="pe-ex"><div class="pe-name">'+esc(x.name)+(changed?' <span class="pe-chg">edited</span>':'')+'</div><div class="pe-ctl">';
   h+='<span class="pe-lbl">Sets</span><button aria-label="Fewer sets" onclick="peSets(\''+x.id+'\',-1)">&minus;</button><span class="pe-val">'+x.sets+'</span><button aria-label="More sets" onclick="peSets(\''+x.id+'\',1)">+</button>';
   if(m)h+='<span class="pe-lbl">'+(x.type==='time'?'Sec':'Reps')+'</span><input class="pe-in" value="'+m[2]+'" inputmode="numeric" maxlength="7" aria-label="Reps" onchange="peReps(\''+x.id+'\',this.value)">';
@@ -5313,7 +5487,7 @@ function peRow(x,day,ix,len){
   h+='</select><span class="pe-lbl">Day</span><select class="pe-in" aria-label="Move to day" onchange="peToDay(\''+x.id+'\',this.value)">';
   PLAN_DAYS.forEach(function(d){h+='<option value="'+d+'"'+(d===day?' selected':'')+'>'+esc((PPL[d]&&PPL[d].name)||d)+'</option>';});
   h+='</select></div><div class="pe-ctl">';
-  h+='<button aria-label="Move up"'+(ix===0?' disabled':'')+' onclick="peMove(\''+x.id+'\',-1)">&uarr;</button><button aria-label="Move down"'+(ix===len-1?' disabled':'')+' onclick="peMove(\''+x.id+'\',1)">&darr;</button><button class="pe-del" onclick="peHide(\''+x.id+'\')">Hide</button></div></div>';
+  h+='<button aria-label="Move up"'+(ix===0?' disabled':'')+' onclick="peMove(\''+x.id+'\',-1)">&uarr;</button><button aria-label="Move down"'+(ix===len-1?' disabled':'')+' onclick="peMove(\''+x.id+'\',1)">&darr;</button>'+(ix<len-1?'<button class="'+(x.pairNext?'pe-on':'')+'" aria-pressed="'+(x.pairNext?'true':'false')+'" onclick="pePair(\''+x.id+'\')">Superset with next'+(x.pairNext?': on':'')+'</button>':'')+'<button class="pe-del" onclick="peHide(\''+x.id+'\')">Hide</button></div></div>';
   return h;
 }
 function peHtml(){

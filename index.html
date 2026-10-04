@@ -559,6 +559,29 @@ button:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:2px so
 .pb-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .pb-actions button{padding:8px 12px;border-radius:8px;border:1px solid var(--morning);background:transparent;color:var(--morning);font-size:12px;font-weight:600}
 .pb-actions button.pb-quiet{border-color:var(--border);color:var(--muted)}
+
+.rec-why{font-size:12px;color:var(--muted);margin:2px 20px 8px;line-height:1.4}
+.ci-sheet{position:fixed;left:0;right:0;bottom:0;z-index:9000;display:none}
+.ci-card{margin:0 10px calc(10px + env(safe-area-inset-bottom,0px));padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:0 -8px 30px rgba(0,0,0,.5)}
+.ci-lbl{font-size:12px;color:var(--muted);margin-top:12px}
+.pe-overlay{position:fixed;inset:0;z-index:8500;background:var(--bg);overflow-y:auto;display:none;-webkit-overflow-scrolling:touch}
+.pe-wrap{padding:calc(14px + env(safe-area-inset-top,0px)) 16px 20px}
+.pe-head{display:flex;justify-content:space-between;align-items:center}
+.pe-x{background:none;border:none;color:var(--text);font-size:30px;line-height:1;padding:4px 10px}
+.pe-day{margin:20px 0 6px;font-weight:700;letter-spacing:.5px}
+.pe-chg{font-size:11px;color:var(--muted);font-weight:400}
+.pe-ex{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-top:8px}
+.pe-name{font-size:14px;font-weight:600}
+.pe-ctl{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
+.pe-lbl{font-size:11px;color:var(--muted)}
+.pe-val{min-width:18px;text-align:center;font-weight:700}
+.pe-ctl button{min-width:36px;min-height:34px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:15px}
+.pe-ctl button:disabled{opacity:.35}
+.pe-ctl .pe-del{margin-left:auto;font-size:12px;color:var(--danger);border-color:var(--danger);background:transparent;padding:0 12px}
+.pe-in{background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 8px;font-size:13px;width:84px}
+select.pe-in{width:auto;max-width:140px}
+
+.emj{width:1.15em;height:1.15em;vertical-align:-.22em;display:inline-block;object-fit:contain}
 </style>
 </head>
 <body>
@@ -842,6 +865,38 @@ var COOLDOWNS={
   d5:['Hip flexor stretch (kneeling lunge) — 45 sec each side','Hamstring stretch (seated reach) — 45 sec each side','Quad stretch (standing, heel to glute) — 30 sec each side','Calf stretch against wall — 30 sec each side'],
 };
 var ALL_EX=Object.values(EX).flat();
+// ── EDITABLE PLAN: your edits are stored as small overrides on top of the built-in plan ──
+var PLAN_DAYS=['d1','d2','d3','d4','d5'];
+var PLAN_OBJ={},PLAN_BASE={days:{},ex:{}};
+PLAN_DAYS.forEach(function(day){
+  PLAN_BASE.days[day]=EX[day].map(function(e){return e.id;});
+  EX[day].forEach(function(e){PLAN_OBJ[e.id]=e;PLAN_BASE.ex[e.id]={sets:e.sets,target:e.target,rest:e.rest};});
+});
+function getPlanEdits(){
+  try{var o=JSON.parse(localStorage.getItem('pt_plan_edits')||'{}');return(o&&typeof o==='object'&&!Array.isArray(o))?o:{};}catch(e){return{};}
+}
+function applyPlanEdits(){
+  var ed=getPlanEdits(),hidden=Array.isArray(ed.hidden)?ed.hidden:[],days=(ed.days&&typeof ed.days==='object')?ed.days:{},placed={};
+  Object.keys(PLAN_OBJ).forEach(function(id){var o=PLAN_OBJ[id],b=PLAN_BASE.ex[id];o.sets=b.sets;o.target=b.target;o.rest=b.rest;});
+  PLAN_DAYS.forEach(function(day){(Array.isArray(days[day])?days[day]:[]).forEach(function(id){placed[id]=1;});});
+  PLAN_DAYS.forEach(function(day){
+    var list=[],seen={};
+    (Array.isArray(days[day])?days[day]:[]).forEach(function(id){if(PLAN_OBJ[id]&&hidden.indexOf(id)<0&&!seen[id]){list.push(PLAN_OBJ[id]);seen[id]=1;}});
+    PLAN_BASE.days[day].forEach(function(id){if(!placed[id]&&hidden.indexOf(id)<0&&!seen[id]){list.push(PLAN_OBJ[id]);seen[id]=1;}});
+    EX[day].length=0;list.forEach(function(x){EX[day].push(x);});
+  });
+  var exEd=(ed.ex&&typeof ed.ex==='object')?ed.ex:{};
+  Object.keys(exEd).forEach(function(id){
+    var o=PLAN_OBJ[id],c=exEd[id];if(!o||!c)return;
+    var m=String(PLAN_BASE.ex[id].target||'').match(/^(\d+)x(\d+(?:-\d+)?)(.*)$/);
+    var sets=parseInt(c.sets);if(!(sets>=1&&sets<=8))sets=0;
+    var reps=(typeof c.reps==='string'&&/^\d{1,3}(-\d{1,3})?$/.test(c.reps))?c.reps:'';
+    if(m&&(sets||reps)){o.target=(sets||m[1])+'x'+(reps||m[2])+m[3];}
+    if(sets)o.sets=sets;
+    if(typeof c.rest==='string'&&/^\d{2,3}(-\d{2,3})? sec$|^\d(-\d)? min$/.test(c.rest))o.rest=c.rest;
+  });
+}
+applyPlanEdits();
 var ALL_MUSCLES={
   front_delt:'Front Delts',side_delt:'Side Delts',chest:'Chest',
   bicep:'Biceps',core:'Core / Abs',oblique:'Obliques',quad:'Quads',calf:'Calves',
@@ -1903,14 +1958,16 @@ function starterWt(exId,bid){
   var v=STARTER_KG[exId]||STARTER_KG[bid]||STARTER_KG['_default'];
   return wUnit()==='lb'?roundLoad(v*2.20462):v;
 }
+var _recWhy='';
+function getRecWhy(){return _recWhy;}
 function getRec(exId,ex,mode){
   var isMorn=exId.startsWith('m_');
   var rr=repRange(ex.target||'1x10');
   var targetReps=rr.lo||10;
   var n=ex.sets||1;
-  if(ex.type==='time') return Array.from({length:n},function(){return{time:targetReps,done:false};});
+  if(ex.type==='time'){_recWhy='Timed hold: aim for '+targetReps+' seconds each set, and add a few seconds once it feels easy.';return Array.from({length:n},function(){return{time:targetReps,done:false};});}
   var lw=!!ex.loadable;
-  if(ex.type!=='weighted'&&!lw) return Array.from({length:n},function(){return{reps:targetReps,done:false};});
+  if(ex.type!=='weighted'&&!lw){_recWhy='Aim for '+(rr.hi>rr.lo?rr.lo+'-'+rr.hi:rr.lo)+' clean reps each set. Once you reach '+rr.hi+', make it harder (slower tempo or a tougher variation).';return Array.from({length:n},function(){return{reps:targetReps,done:false};});}
   var sessions=[];
   Object.entries(load().logs).sort().forEach(function(e){
     if(isDeloadDate(e[0]))return; // deload weights are not a baseline
@@ -1919,7 +1976,10 @@ function getRec(exId,ex,mode){
   });
   var _inf=resolveExById(exId),_bid=_inf&&_inf.isAlt?_inf.baseId:exId;
   var sk=lw?0:starterWt(exId,_bid);
-  if(mode==='starter'||!sessions.length)return Array.from({length:n},function(){return{reps:targetReps,weight:sk,done:false};});
+  if(mode==='starter'||!sessions.length){
+    _recWhy=lw?'Start at bodyweight. Once every set reaches '+rr.hi+' reps, load gets added.':(getCalib(_bid)?'From your starting-weight test.':'First time here, so this is a cautious starting weight. Adjust it after your first set.');
+    return Array.from({length:n},function(){return{reps:targetReps,weight:sk,done:false};});
+  }
   var last=sessions[sessions.length-1];
   var maxW=0,allHit=true;
   last.forEach(function(s){if(s.weight)maxW=Math.max(maxW,+s.weight);});
@@ -1935,7 +1995,16 @@ function getRec(exId,ex,mode){
   if(avgRpe>=9.5)step=0;else if(avgRpe>0&&avgRpe<=6.5)step=incFor(maxW,2); // maxed out: hold; very easy: bigger jump
   function nextW(base,hit){if(lw&&!base)return(hit&&step>0)?(wUnit()==='lb'?5:2):0;return hit&&base>0?base+step:(base||sk);}
   var nextReps=allHit?(step>0?rr.lo:rr.hi):Math.min(rr.hi,Math.max(rr.lo,(minLast===999?rr.lo:minLast+1)));
+  function whyProgress(pw){
+    var u=wUnit(),r1=function(x){return Math.round(x*10)/10;};
+    var climb=(wk&&wk.type==='climb')?' (Climb week: one rep under the top still counts.)':'';
+    if(!allHit)return(minLast===999?'':'Your lowest set last time was '+minLast+' reps (target '+need+'). ')+'Keep '+(pw||maxW)+' '+u+' and aim for '+nextReps+' reps.'+climb;
+    if(lw&&!maxW)return step>0?'You reached '+need+' reps at bodyweight, so add '+pw+' '+u+'.':'You reached the reps but effort was RPE '+r1(avgRpe)+', so stay at bodyweight a little longer.';
+    if(step===0)return 'Every set hit '+need+' reps, but effort averaged RPE '+r1(avgRpe)+'. Hold '+maxW+' '+u+' until it feels easier.';
+    return 'Every set hit '+need+' reps'+(avgRpe?' at RPE '+r1(avgRpe):'')+', so add '+r1(pw-maxW)+' '+u+'.'+climb;
+  }
   if(mode==='last'){
+    _recWhy='Repeating exactly what you did last time.';
     return Array.from({length:n},function(_,i){
       var s=last[i]||last[last.length-1];
       return{reps:+(s.reps||targetReps),weight:+(s.weight||maxW||sk),done:false};
@@ -1943,10 +2012,12 @@ function getRec(exId,ex,mode){
   }
   if(mode==='progress'){
     var pw=nextW(maxW,allHit);
+    _recWhy=whyProgress(pw);
     return Array.from({length:n},function(){return{reps:nextReps,weight:pw,done:false};});
   }
   if(mode==='deload'){
     var dw=(lw&&!maxW)?0:roundLoad((maxW||sk)*0.85);
+    _recWhy='Deload: about 85% of your working weight. Stop each exercise 1-2 sets early.';
     return Array.from({length:n},function(){return{reps:targetReps,weight:dw,done:false};});
   }
   // smart default
@@ -1954,6 +2025,7 @@ function getRec(exId,ex,mode){
   if(weekInfo&&weekInfo.type==='repeat'&&weekInfo.sourceOffset){
     var srcSets=getSetsForAbsoluteWeek(exId,isMorn,weekInfo.startDate,weekInfo.totalWeek-weekInfo.sourceOffset);
     if(srcSets&&srcSets.length){
+      _recWhy='Consolidate week: repeating the weights from your earlier week so they feel solid.';
       return Array.from({length:n},function(_,i){
         var s=srcSets[i]||srcSets[srcSets.length-1];
         return{reps:+(s.reps||targetReps),weight:+(s.weight||sk),done:false};
@@ -1967,11 +2039,13 @@ function getRec(exId,ex,mode){
       climbSets.forEach(function(s){if(s.weight)climbMaxW=Math.max(climbMaxW,+s.weight);});
       if(climbMaxW>0){
         var startW=Math.max(Math.round(climbMaxW*0.925/2.5)*2.5,2.5);
+        _recWhy='New cycle: starting at about 92.5% of the weight you reached last cycle.';
         return Array.from({length:n},function(){return{reps:targetReps,weight:startW,done:false};});
       }
     }
   }
   var sugW=isDeloadWeek()?((lw&&!maxW)?0:roundLoad((maxW||sk)*0.85)):nextW(maxW,allHit);
+  _recWhy=isDeloadWeek()?'Deload week: about 85% of your working weight. Stop each exercise 1-2 sets early.':whyProgress(sugW);
   return Array.from({length:n},function(){return{reps:nextReps,weight:sugW,done:false};});
 }
 function calcSessionVol(log,type){
@@ -2441,7 +2515,8 @@ function deloadSuggestion(){
   var prev=new Date(now());prev.setDate(prev.getDate()-7);
   var pi=getCycleWeekInfo(prev);if(pi&&pi.type==='deload')return null;
   var stalls=getPlateaus().length,rpe=recentAvgRpe(14);
-  return(stalls>=3&&rpe>=8.5)?{stalls:stalls,rpe:Math.round(rpe*10)/10,mk:mk}:null;
+  var sig=checkinSignals(),fatigue=sig.n>=3&&(sig.highSore>=2||sig.joint>=2);
+  return((stalls>=3&&rpe>=8.5)||fatigue)?{stalls:stalls,rpe:Math.round(rpe*10)/10,mk:mk,fatigue:fatigue}:null;
 }
 function acceptDeload(mk){localStorage.setItem('pt_deload_override',mk);refreshScreens();showToast('This week is now a deload','var(--success)');}
 function dismissDeload(mk){localStorage.setItem('pt_deload_dismissed',mk);refreshScreens();}
@@ -2456,7 +2531,7 @@ function planBanners(){
     if(gap>=10)h+='<div class="plan-banner"><div class="pb-title">Welcome back</div><div class="pb-sub">Your last workout was '+gap+' days ago. How do you want to continue?</div><div class="pb-actions"><button onclick="pickUpPlan()">Pick up where I left off</button><button onclick="easeBackIn()">Ease back in</button><button class="pb-quiet" onclick="dismissWelcome()">Dismiss</button></div></div>';
   }
   var ds=deloadSuggestion();
-  if(ds)h+='<div class="plan-banner"><div class="pb-title">Consider a deload week</div><div class="pb-sub">'+ds.stalls+' lifts have stalled and your recent effort averages RPE '+ds.rpe+'. A lighter week now may help you push past it.</div><div class="pb-actions"><button onclick="acceptDeload(\''+ds.mk+'\')">Make this week a deload</button><button class="pb-quiet" onclick="dismissDeload(\''+ds.mk+'\')">Not now</button></div></div>';
+  if(ds)h+='<div class="plan-banner"><div class="pb-title">Consider a deload week</div><div class="pb-sub">'+(ds.fatigue?'Your recent check-ins show high soreness or joint niggles. A lighter week now can help you recover and come back stronger.':ds.stalls+' lifts have stalled and your recent effort averages RPE '+ds.rpe+'. A lighter week now may help you push past it.')+'</div><div class="pb-actions"><button onclick="acceptDeload(\''+ds.mk+'\')">Make this week a deload</button><button class="pb-quiet" onclick="dismissDeload(\''+ds.mk+'\')">Not now</button></div></div>';
   return h;
 }
 
@@ -2477,6 +2552,84 @@ function effLoad(exId,s){
   var bw=getBodyWeight();
   return bw?added+bw*f:added;
 }
+
+// ── WEEKLY SET TARGETS (editable ranges per muscle) ──
+var VOL_BANDS_DEFAULT={'Chest':[10,16],'Lats':[10,18],'Quads':[8,14],'Hamstrings':[6,12],'Glutes':[6,16],'Side Delts':[8,16],'Rear Delts':[6,14],'Front Delts':[3,10],'Biceps':[8,14],'Triceps':[8,14],'Calves':[6,12],'Traps':[4,12]};
+function getVolBands(){
+  var o={};try{o=JSON.parse(localStorage.getItem('pt_vol_bands')||'{}')||{};}catch(e){o={};}
+  var out={};Object.keys(VOL_BANDS_DEFAULT).forEach(function(k){
+    var v=o[k];out[k]=(Array.isArray(v)&&v.length===2&&+v[0]>=0&&+v[1]>=+v[0]&&+v[1]<=60)?[+v[0],+v[1]]:VOL_BANDS_DEFAULT[k];
+  });
+  return out;
+}
+function getVolBand(name){return getVolBands()[name]||null;}
+function volStatus(sets,band){if(!band)return'none';return sets<band[0]-0.5?'low':(sets>band[1]+0.5?'high':'ok');}
+function volColor(sets,band){var s=volStatus(sets,band);if(s==='none')return sets>=10?'var(--success)':sets>=6?'var(--morning)':'var(--danger)';return s==='ok'?'var(--success)':(s==='low'?'var(--morning)':'var(--danger)');}
+function volumeAdvice(){
+  var out=[],mf=getMuscle4WeekFreq(),bands=getVolBands();
+  Object.keys(mf).forEach(function(k){
+    var b=bands[mf[k].name];if(!b)return;
+    var spw=mf[k].setsPerWeek,st=volStatus(spw,b);
+    if(st==='low')out.push({sev:b[0]-spw,text:mf[k].name+': '+spw+' sets a week is under your '+b[0]+'-'+b[1]+' range. Try adding 1-2 sets.'});
+    if(st==='high')out.push({sev:spw-b[1],text:mf[k].name+': '+spw+' sets a week is above your '+b[0]+'-'+b[1]+' range. Trimming a set or two may help recovery.'});
+  });
+  out.sort(function(a,b){return b.sev-a.sev;});
+  var sig=checkinSignals();
+  var lines=out.slice(0,3).map(function(x){return x.text;});
+  if(sig.n>=3&&sig.joint>=2)lines.push('Joint niggles showed up in your last check-ins. Consider swapping the exercise that bothers you.');
+  if(sig.n>=3&&sig.lowPump>=3&&sig.highSore===0&&!out.length)lines.push('Low pump and no soreness three times running: you probably have room for one extra set on your priority muscles.');
+  return lines;
+}
+function renderVolumeAdvice(){
+  var l=volumeAdvice();if(!l.length)return '';
+  return '<div class="plan-banner" style="margin:10px 0 0"><div class="pb-title">Volume notes</div>'+l.map(function(t){return '<div class="pb-sub">'+esc(t)+'</div>';}).join('')+'<div class="pb-actions"><button onclick="openPlanEditor()">Edit plan</button></div></div>';
+}
+
+// ── POST-WORKOUT CHECK-IN (pump, soreness, joints) ──
+var _ci=null;
+function getCheckins(limit){
+  var logs=load().logs,ks=Object.keys(logs).filter(function(k){return logs[k].checkin;}).sort().reverse(),out=[],cut=dnum(now())-14;
+  for(var i=0;i<ks.length&&out.length<limit;i++){if(dnum(new Date(ks[i]+'T00:00:00'))>=cut)out.push(logs[ks[i]].checkin);}
+  return out;
+}
+function checkinSignals(){
+  var c=getCheckins(4),r={n:c.length,highSore:0,joint:0,lowPump:0};
+  c.forEach(function(x){if(x.sore===3)r.highSore++;if(x.joint>=2)r.joint++;if(x.pump===1)r.lowPump++;});
+  return r;
+}
+function maybeCheckin(key){
+  if(localStorage.getItem('pt_checkin_off')==='1')return;
+  var l=load().logs[key];if(!l||l.checkin||!l.ppl)return;
+  openCheckin(key);
+}
+function checkinHtml(){
+  var rows=[['pump','Pump',['Low','Good','Great']],['sore','Soreness from last time',['None','Some','High']],['joint','Joints',['Fine','Niggle','Pain']]];
+  var h='<div class="ci-card"><div class="pb-title">Quick check-in</div><div class="pb-sub">Ten seconds. It helps the app spot when you need a lighter week.</div>';
+  rows.forEach(function(r){
+    h+='<div class="ci-lbl">'+r[1]+'</div><div class="pb-actions" style="margin-top:6px">';
+    r[2].forEach(function(t,i){h+='<button class="'+(_ci[r[0]]===i+1?'':'pb-quiet')+'" onclick="ciPick(\''+r[0]+'\','+(i+1)+')">'+t+'</button>';});
+    h+='</div>';
+  });
+  h+='<div class="pb-actions" style="margin-top:14px"><button onclick="ciSave()">Save</button><button class="pb-quiet" onclick="ciClose()">Skip</button><button class="pb-quiet" onclick="ciOff()">Do not ask again</button></div></div>';
+  return h;
+}
+function openCheckin(key){
+  _ci={key:key,pump:0,sore:0,joint:0};
+  var el=document.getElementById('ciSheet');
+  if(!el){el=document.createElement('div');el.id='ciSheet';document.body.appendChild(el);}
+  el.className='ci-sheet';el.setAttribute('role','dialog');el.innerHTML=checkinHtml();el.style.display='block';
+}
+function ciPick(f,v){if(!_ci)return;_ci[f]=v;var el=document.getElementById('ciSheet');if(el)el.innerHTML=checkinHtml();}
+function ciClose(){var el=document.getElementById('ciSheet');if(el){el.style.display='none';el.innerHTML='';}_ci=null;}
+function ciSave(){
+  if(!_ci)return;
+  if(!(_ci.pump||_ci.sore||_ci.joint)){ciClose();return;}
+  var data=load();if(!data.logs[_ci.key])data.logs[_ci.key]={};
+  data.logs[_ci.key].checkin={pump:_ci.pump,sore:_ci.sore,joint:_ci.joint};
+  save(data);ciClose();showToast('Check-in saved','var(--success)');refreshScreens();
+}
+function ciOff(){localStorage.setItem('pt_checkin_off','1');ciClose();showToast('Check-ins off. You can turn them on in Settings.','var(--muted)');}
+function toggleCheckin(){if(localStorage.getItem('pt_checkin_off')==='1')localStorage.removeItem('pt_checkin_off');else localStorage.setItem('pt_checkin_off','1');refreshScreens();}
 // ── REST TIMER ─────────────────────────────────────────────────
 function parseRestSecs(restStr){
   if(!restStr)return 60;
@@ -3319,6 +3472,10 @@ function renderChangelog(){
       'Exercise ids are documented as permanent, and a rename alias table keeps history attached if one is ever renamed',
       'Removed hard-coded personal wording (rooftop, school) from tips and the commute labels',
       'Replanned for balance: Upper day trimmed from 11 to 7 exercises; curls moved to Pull day; core now spread over four days; side delts get 4 sets on Upper and Push plus a lateral raise on Pull',
+      'Windows-style emoji (Microsoft Fluent Emoji) everywhere, on any phone; switch back to your phone default in Settings',
+      'Each suggested weight now says why (for example: every set hit 12 reps at RPE 8, so add 2 kg)',
+      'Edit plan (Progress > Settings): change sets, reps and rest, reorder, move or hide exercises, and set weekly set targets per muscle; reset any time',
+      'Quick post-workout check-in (pump, soreness, joints) feeds deload suggestions; weekly muscle volume now shows your target ranges and advice',
       'Plan control: pause the plan (Progress > Settings) or pick up where you left off after a break; a deload can be suggested when lifts stall and effort runs high',
       'Settings: kg/lb units, smallest weight jump and your own list of available weights drive every weight suggestion',
       'Pull-ups and push-ups now count body weight in 1RM and PR estimates once you log your body weight',
@@ -3814,12 +3971,13 @@ function rProg(){
     var maxSets=mfreq[mfkeys[0]].setsPerWeek||1;
     mfkeys.slice(0,12).forEach(function(k){
       var pct=Math.round(mfreq[k].setsPerWeek/maxSets*100);
-      var col=mfreq[k].setsPerWeek>=10?'var(--success)':mfreq[k].setsPerWeek>=6?'var(--morning)':'var(--danger)';
+      var bnd=getVolBand(mfreq[k].name),col=volColor(mfreq[k].setsPerWeek,bnd);
       h+='<div class="mvol-row"><div class="mvol-name">'+mfreq[k].name+'<span style="color:var(--muted);font-weight:400"> · hit '+mfreq[k].sessions+'x</span></div>';
       h+='<div class="mvol-bg"><div class="mvol-fill" style="width:'+pct+'%;background:'+col+'"></div></div>';
-      h+='<div class="mvol-num">'+mfreq[k].setsPerWeek+'</div></div>';
+      h+='<div class="mvol-num">'+mfreq[k].setsPerWeek+(bnd?'<span style="font-size:10px;color:var(--muted)"> /'+bnd[0]+'-'+bnd[1]+'</span>':'')+'</div></div>';
     });
-    h+='<div style="font-size:11px;color:var(--muted);margin-top:8px;text-align:center">Goal: 10-20 sets/week per muscle group</div>';
+    h+='<div style="font-size:11px;color:var(--muted);margin-top:8px;text-align:center">Colour shows where each muscle sits in its target range (change ranges in Edit plan).</div>';
+    h+=renderVolumeAdvice();
   } else {h+='<div class="no-data">Log 4 weeks of sessions to see frequency data</div>';}
   h+='</div>';
 
@@ -4375,6 +4533,8 @@ function buildModal(exList,type){
     }
     if(effType==='weighted'&&!getCalib(ex.id)&&getBest(activeId).weight===0)h+='<button class="autofill-btn" onclick="calibrate(\''+activeId+'\')">\uD83C\uDFAF Find my starting weight</button>';
     h+='<button class="autofill-btn" onclick="fillRec(\''+activeId+'\')">'+(dl?'⚠️ Auto-fill (Deload 85%)':'✨ Auto-fill Recommendation')+'</button>';
+    var _rw='';try{getRec(activeId,Object.assign({},ex,{type:effType,isBand:(typeof effIsBand!=='undefined'?effIsBand:ex.isBand)}));_rw=getRecWhy();}catch(e){}
+    if(_rw)h+='<div class="rec-why">'+esc(_rw)+'</div>';
     h+='<div class="set-inputs">';
     st.sets.forEach(function(s,si){
       var lbl=ex.sideLabels?(ex.sideLabels[si]||'S'+(si+1)):(ex.sets>1?'S'+(si+1):'x');
@@ -4584,7 +4744,9 @@ function saveSession(){
   if(mCooldown.length){data.logs[mKey][mType].cooldown={items:mCooldown.slice(),done:mCooldown.every(function(x){return x;})};}
   save(data);
   localStorage.removeItem('pt_draft');
+  var _ck=mKey,_ct=mType;
   closeModal();
+  if(_ct==='ppl')maybeCheckin(_ck);
   try{render(curScreen);}catch(re){console.warn('render error',re);}
   if(prNames.length){
     showToast('🏆 New PR! '+prNames.slice(0,2).join(', ')+(prNames.length>2?' +more':''),'#facc15');
@@ -4842,6 +5004,8 @@ function exportData(){
     customEx:localStorage.getItem('pt_custom_ex')||'[]',
     bands:bands,
     calib:calib,
+    planEdits:localStorage.getItem('pt_plan_edits'),volBands:localStorage.getItem('pt_vol_bands'),checkinOff:localStorage.getItem('pt_checkin_off'),
+    emoji:localStorage.getItem('pt_emoji'),
     unit:wUnit(),step:localStorage.getItem('pt_step'),weights:localStorage.getItem('pt_weights'),pauses:localStorage.getItem('pt_pauses'),
     walkGoal:localStorage.getItem('pt_walk_goal'),
     programStart:localStorage.getItem('pt_program_start')
@@ -4882,6 +5046,15 @@ function importData(e){
         if(parsed._meta.font){localStorage.setItem('ppl_font',parsed._meta.font);applyFont(parsed._meta.font);}
         if(parsed._meta.customEx){try{var ce=JSON.parse(parsed._meta.customEx);if(Array.isArray(ce)){ce.forEach(function(x){['name','target'].forEach(function(f){if(typeof x[f]==='string')x[f]=x[f].replace(/[<>"&]/g,'');});});localStorage.setItem('pt_custom_ex',JSON.stringify(ce));}}catch(e){}}
         if(parsed._meta.bands){Object.entries(parsed._meta.bands).forEach(function(e){if(/^band_[\w-]+$/.test(e[0])&&typeof e[1]==='string'&&e[1].length<200)localStorage.setItem(e[0],e[1]);});}
+        try{
+          ['planEdits:pt_plan_edits','volBands:pt_vol_bands'].forEach(function(pair){
+            var p2=pair.split(':'),raw=parsed._meta[p2[0]];
+            if(typeof raw==='string'&&raw){var o=JSON.parse(raw);if(o&&typeof o==='object'&&!Array.isArray(o))localStorage.setItem(p2[1],JSON.stringify(o));}
+          });
+          if(parsed._meta.checkinOff==='1')localStorage.setItem('pt_checkin_off','1');
+          applyPlanEdits();
+        }catch(_pe){}
+        if(parsed._meta.emoji==='native')localStorage.setItem('pt_emoji','native');
         if(parsed._meta.unit==='lb'||parsed._meta.unit==='kg')localStorage.setItem('pt_unit',parsed._meta.unit);
         if(parsed._meta.step&&parseFloat(parsed._meta.step)>0)localStorage.setItem('pt_step',String(parseFloat(parsed._meta.step)));
         if(typeof parsed._meta.weights==='string'&&/^[\d.,\s;]+$/.test(parsed._meta.weights))localStorage.setItem('pt_weights',parsed._meta.weights);
@@ -5073,8 +5246,197 @@ function renderTrainingSettings(){
   h+='<div class="walk-note">Suggestions snap to this list. Leave it blank to use the default jumps.</div>';
   h+='<div style="'+lbl+'">Plan</div><div class="walk-note" style="margin-top:6px">'+(paused?'Paused: your cycle is on hold and nothing counts as missed.':(info?'Week '+info.weekNum+' of '+CYCLE_LENGTH+' \u00b7 '+info.plan.name:'Not started yet'))+'</div>';
   h+='<div class="pb-actions"><button onclick="'+(paused?'resumePlan()':'pausePlan()')+'">'+(paused?'Resume plan':'Pause plan')+'</button></div>';
+  h+='<div style="'+lbl+'">Training plan</div><div class="pb-actions" style="margin-top:6px"><button onclick="openPlanEditor()">Edit plan &amp; targets</button><button class="pb-quiet" onclick="toggleCheckin()">Check-in: '+(localStorage.getItem('pt_checkin_off')==='1'?'off':'on')+'</button></div>';
+  h+='<div style="'+lbl+'">Look</div><div class="pb-actions" style="margin-top:6px"><button onclick="toggleEmoji()">Emoji: '+(emojiStyle()==='native'?'phone default':'Windows style')+'</button></div>';
+  h+='<div class="walk-note">Windows-style emoji use Microsoft\'s open-source Fluent Emoji (MIT licence). They download once, then work offline. <button class="walk-goal-btn" onclick="showEmojiStatus()">check emoji status</button></div><div id="emjStatus" class="walk-note" style="word-break:break-all"></div>';
   h+='</div>';
   return h;
+}
+// ── PLAN EDITOR (overlay): edit sets/reps/rest, reorder, move, hide, and weekly set targets ──
+var REST_CHOICES=['45 sec','60 sec','60-90 sec','90 sec','2-3 min','3-4 min'];
+function savePlanEdits(e){localStorage.setItem('pt_plan_edits',JSON.stringify(e));}
+function peEdits(){var e=getPlanEdits();if(!e.ex||typeof e.ex!=='object')e.ex={};if(!e.days||typeof e.days!=='object')e.days={};if(!Array.isArray(e.hidden))e.hidden=[];return e;}
+function peFreeze(e){PLAN_DAYS.forEach(function(day){e.days[day]=EX[day].map(function(x){return x.id;});});}
+function peCommit(e){savePlanEdits(e);applyPlanEdits();peRender();refreshScreens();}
+function peCfg(e,id){return e.ex[id]||(e.ex[id]={});}
+function peSets(id,delta){var e=peEdits(),n=Math.max(1,Math.min(8,(parseInt(PLAN_OBJ[id].sets)||1)+delta));peCfg(e,id).sets=n;peCommit(e);}
+function peReps(id,v){
+  v=String(v).trim();
+  if(!/^\d{1,3}(-\d{1,3})?$/.test(v)){showToast('Use a number or a range like 8-12','var(--danger)');peRender();return;}
+  var pr=v.split('-').map(Number);if(pr.length===2&&pr[0]>pr[1]){showToast('The first number must be the smaller one','var(--danger)');peRender();return;}
+  var e=peEdits();peCfg(e,id).reps=v;peCommit(e);
+}
+function peRest(id,v){var e=peEdits();peCfg(e,id).rest=v;peCommit(e);}
+function peMove(id,dir){
+  var e=peEdits();peFreeze(e);
+  for(var i=0;i<PLAN_DAYS.length;i++){
+    var a=e.days[PLAN_DAYS[i]],ix=a.indexOf(id);
+    if(ix<0)continue;var j=ix+dir;if(j<0||j>=a.length)return;
+    var t=a[ix];a[ix]=a[j];a[j]=t;break;
+  }
+  peCommit(e);
+}
+function peToDay(id,day){
+  if(PLAN_DAYS.indexOf(day)<0)return;
+  var e=peEdits();peFreeze(e);
+  PLAN_DAYS.forEach(function(d){e.days[d]=e.days[d].filter(function(x){return x!==id;});});
+  e.days[day].push(id);peCommit(e);
+}
+function peHide(id){var e=peEdits();peFreeze(e);PLAN_DAYS.forEach(function(d){e.days[d]=e.days[d].filter(function(x){return x!==id;});});if(e.hidden.indexOf(id)<0)e.hidden.push(id);peCommit(e);}
+function peShow(id){
+  var e=peEdits();peFreeze(e);e.hidden=e.hidden.filter(function(x){return x!==id;});
+  var home=PLAN_DAYS.filter(function(d){return PLAN_BASE.days[d].indexOf(id)>=0;})[0]||'d1';
+  e.days[home].push(id);peCommit(e);
+}
+function peReset(){
+  if(!confirm('Reset every change to the built-in plan? Your logged workouts are not affected.'))return;
+  localStorage.removeItem('pt_plan_edits');applyPlanEdits();peRender();refreshScreens();showToast('Plan reset','var(--muted)');
+}
+function peBand(name,idx,v){
+  var n=parseInt(v),o={};try{o=JSON.parse(localStorage.getItem('pt_vol_bands')||'{}')||{};}catch(x){o={};}
+  var cur=getVolBands()[name]||[0,0].slice();cur=cur.slice();
+  if(!(n>=0&&n<=60)){showToast('Enter a number from 0 to 60','var(--danger)');peRender();return;}
+  cur[idx]=n;if(cur[0]>cur[1]){showToast('The minimum cannot be above the maximum','var(--danger)');peRender();return;}
+  o[name]=cur;localStorage.setItem('pt_vol_bands',JSON.stringify(o));peRender();refreshScreens();
+}
+function peBandsReset(){localStorage.removeItem('pt_vol_bands');peRender();refreshScreens();}
+function peClose(){var el=document.getElementById('planEditor');if(el){el.style.display='none';el.innerHTML='';}}
+function peRow(x,day,ix,len){
+  var base=PLAN_BASE.ex[x.id]||{},m=String(x.target||'').match(/^(\d+)x(\d+(?:-\d+)?)(.*)$/);
+  var changed=(x.sets!==base.sets||x.target!==base.target||x.rest!==base.rest);
+  var h='<div class="pe-ex"><div class="pe-name">'+esc(x.name)+(changed?' <span class="pe-chg">edited</span>':'')+'</div><div class="pe-ctl">';
+  h+='<span class="pe-lbl">Sets</span><button aria-label="Fewer sets" onclick="peSets(\''+x.id+'\',-1)">&minus;</button><span class="pe-val">'+x.sets+'</span><button aria-label="More sets" onclick="peSets(\''+x.id+'\',1)">+</button>';
+  if(m)h+='<span class="pe-lbl">'+(x.type==='time'?'Sec':'Reps')+'</span><input class="pe-in" value="'+m[2]+'" inputmode="numeric" maxlength="7" aria-label="Reps" onchange="peReps(\''+x.id+'\',this.value)">';
+  h+='</div><div class="pe-ctl"><span class="pe-lbl">Rest</span><select class="pe-in" aria-label="Rest" onchange="peRest(\''+x.id+'\',this.value)">';
+  var opts=REST_CHOICES.indexOf(x.rest)>=0?REST_CHOICES:[x.rest||'60 sec'].concat(REST_CHOICES);
+  opts.forEach(function(o){h+='<option'+(o===x.rest?' selected':'')+'>'+esc(o)+'</option>';});
+  h+='</select><span class="pe-lbl">Day</span><select class="pe-in" aria-label="Move to day" onchange="peToDay(\''+x.id+'\',this.value)">';
+  PLAN_DAYS.forEach(function(d){h+='<option value="'+d+'"'+(d===day?' selected':'')+'>'+esc((PPL[d]&&PPL[d].name)||d)+'</option>';});
+  h+='</select></div><div class="pe-ctl">';
+  h+='<button aria-label="Move up"'+(ix===0?' disabled':'')+' onclick="peMove(\''+x.id+'\',-1)">&uarr;</button><button aria-label="Move down"'+(ix===len-1?' disabled':'')+' onclick="peMove(\''+x.id+'\',1)">&darr;</button><button class="pe-del" onclick="peHide(\''+x.id+'\')">Hide</button></div></div>';
+  return h;
+}
+function peHtml(){
+  var e=getPlanEdits(),hidden=Array.isArray(e.hidden)?e.hidden:[];
+  var h='<div class="pe-wrap"><div class="pe-head"><div class="pb-title" style="font-size:18px">Edit plan</div><button class="pe-x" aria-label="Close" onclick="peClose()">&times;</button></div>';
+  h+='<div class="pb-sub">Changes sit on top of the built-in plan and apply to your next sessions. Logged workouts are never changed.</div>';
+  PLAN_DAYS.forEach(function(d){
+    h+='<div class="pe-day">'+esc((PPL[d]&&PPL[d].name)||d)+' <span class="pe-chg">'+EX[d].length+' exercises</span></div>';
+    EX[d].forEach(function(x,i){h+=peRow(x,d,i,EX[d].length);});
+  });
+  if(hidden.length){
+    h+='<div class="pe-day">Hidden</div>';
+    hidden.forEach(function(id){var o=PLAN_OBJ[id];if(o)h+='<div class="pe-ex"><div class="pe-name">'+esc(o.name)+'</div><div class="pe-ctl"><button onclick="peShow(\''+id+'\')">Show again</button></div></div>';});
+  }
+  h+='<div class="pe-day">Weekly set targets <span class="pe-chg">per muscle</span></div><div class="pb-sub">Used for the colours and advice on the Progress screen.</div>';
+  var bands=getVolBands();
+  Object.keys(bands).forEach(function(k){
+    h+='<div class="pe-ex"><div class="pe-ctl"><span class="pe-name" style="flex:1">'+esc(k)+'</span><span class="pe-lbl">Min</span><input class="pe-in" style="width:52px" inputmode="numeric" value="'+bands[k][0]+'" aria-label="'+esc(k)+' minimum" onchange="peBand(\''+k+'\',0,this.value)"><span class="pe-lbl">Max</span><input class="pe-in" style="width:52px" inputmode="numeric" value="'+bands[k][1]+'" aria-label="'+esc(k)+' maximum" onchange="peBand(\''+k+'\',1,this.value)"></div></div>';
+  });
+  h+='<div class="pb-actions" style="margin:14px 0 30px"><button class="pb-quiet" onclick="peBandsReset()">Reset targets</button><button class="pb-quiet" onclick="peReset()">Reset all plan changes</button></div></div>';
+  return h;
+}
+function peRender(){var el=document.getElementById('planEditor');if(el&&el.style.display!=='none')el.innerHTML=peHtml();}
+function openPlanEditor(){
+  var el=document.getElementById('planEditor');
+  if(!el){el=document.createElement('div');el.id='planEditor';document.body.appendChild(el);}
+  el.className='pe-overlay';el.setAttribute('role','dialog');el.setAttribute('aria-modal','true');el.style.display='block';el.innerHTML=peHtml();
+}
+// ── EMOJI STYLE: shows Microsoft's open-source Fluent Emoji (the Windows look) instead of the phone's own emoji ──
+// Images load from a CDN once, are cached by the service worker, and fall back to the phone's emoji if anything fails.
+var EMOJI_BASE='https://cdn.jsdelivr.net/gh/shuding/fluentui-emoji-unicode/assets/';
+var EMOJI_RE=/\p{Extended_Pictographic}(?:\uFE0F|[\u{1F3FB}-\u{1F3FF}])?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F|[\u{1F3FB}-\u{1F3FF}])?)*/gu;
+// text-style glyphs the interface uses on purpose (play, arrows, symbols): leave these alone
+var EMOJI_KEEP=/^[\u00A9\u00AE\u2122\u2194-\u21AA\u25B2\u25B6\u25BC\u25C0\u2B05-\u2B07]/;
+function emojiStyle(){return localStorage.getItem('pt_emoji')==='native'?'native':'fluent';}
+function emojiUrls(em){
+  var cps=Array.from(em).map(function(c){return c.codePointAt(0);});
+  var hex=function(a){return a.map(function(c){return c.toString(16);}).join('-');};
+  var plain=hex(cps.filter(function(c){return c!==0xFE0F;})),full=hex(cps),out=[];
+  ['color','flat'].forEach(function(st){out.push(EMOJI_BASE+plain+'_'+st+'.svg');if(full!==plain)out.push(EMOJI_BASE+full+'_'+st+'.svg');});
+  return out;
+}
+// splits text into [{t:'text'|'emoji',v:string}]
+function emojiSplit(s){
+  var re=new RegExp(EMOJI_RE.source,'gu'),out=[],last=0,m;
+  while((m=re.exec(s))){
+    if(EMOJI_KEEP.test(m[0]))continue;
+    if(m.index>last)out.push({t:'text',v:s.slice(last,m.index)});
+    out.push({t:'emoji',v:m[0]});last=m.index+m[0].length;
+  }
+  if(last<s.length)out.push({t:'text',v:s.slice(last)});
+  return out;
+}
+var _emjFails=[];
+function emjErr(img){
+  var urls=(img.dataset.u||'').split('|'),i=(+img.dataset.i||0)+1;
+  if(_emjFails.length<6)_emjFails.push(img.src);
+  if(i<urls.length){img.dataset.i=String(i);img.src=urls[i];return;}
+  var sp=document.createElement('span');sp.className='emj-n';sp.textContent=img.alt;
+  if(img.parentNode)img.parentNode.replaceChild(sp,img);
+}
+function emjMake(em){
+  var img=document.createElement('img'),urls=emojiUrls(em);
+  img.className='emj';img.alt=em;img.setAttribute('crossorigin','anonymous');img.draggable=false;
+  img.dataset.u=urls.join('|');img.dataset.i='0';
+  img.onerror=function(){emjErr(img);};
+  img.src=urls[0];
+  return img;
+}
+function emjWalk(n){
+  if(!n)return;
+  if(n.nodeType===3){
+    var parts=emojiSplit(n.nodeValue||'');
+    if(!parts.some(function(p){return p.t==='emoji';}))return;
+    var frag=document.createDocumentFragment();
+    parts.forEach(function(p){frag.appendChild(p.t==='emoji'?emjMake(p.v):document.createTextNode(p.v));});
+    if(n.parentNode)n.parentNode.replaceChild(frag,n);
+    return;
+  }
+  if(n.nodeType!==1)return;
+  if(/^(INPUT|TEXTAREA|SELECT|OPTION|SCRIPT|STYLE|TITLE|NOSCRIPT|IMG|CANVAS|SVG)$/i.test(n.tagName||''))return;
+  if(n.classList&&n.classList.contains('emj-n'))return;
+  Array.prototype.slice.call(n.childNodes||[]).forEach(emjWalk);
+}
+var _emjObs=null;
+function startEmoji(){
+  if(emojiStyle()!=='fluent'||typeof document==='undefined'||!document.body)return;
+  try{emjWalk(document.body);}catch(e){}
+  if(typeof MutationObserver==='undefined'||_emjObs)return;
+  _emjObs=new MutationObserver(function(recs){
+    _emjObs.disconnect();
+    try{recs.forEach(function(r){
+      if(r.type==='characterData')emjWalk(r.target);
+      else Array.prototype.forEach.call(r.addedNodes||[],emjWalk);
+    });}catch(e){}
+    _emjObs.observe(document.body,{childList:true,subtree:true,characterData:true});
+  });
+  _emjObs.observe(document.body,{childList:true,subtree:true,characterData:true});
+}
+function stopEmoji(){
+  if(_emjObs){_emjObs.disconnect();_emjObs=null;}
+  Array.prototype.slice.call(document.querySelectorAll('img.emj')).forEach(function(img){
+    if(img.parentNode)img.parentNode.replaceChild(document.createTextNode(img.alt),img);
+  });
+}
+function toggleEmoji(){
+  if(emojiStyle()==='fluent'){localStorage.setItem('pt_emoji','native');stopEmoji();}
+  else{localStorage.removeItem('pt_emoji');startEmoji();}
+  refreshScreens();
+}
+startEmoji();
+
+// quick health report for the Settings screen (helps diagnose a phone that still shows its own emoji)
+function emojiStatus(){
+  var imgs=Array.prototype.slice.call(document.querySelectorAll('img.emj')),loaded=0,loading=0;
+  imgs.forEach(function(i){if(i.complete&&i.naturalWidth>0)loaded++;else loading++;});
+  return{loaded:loaded,loading:loading,fallback:document.querySelectorAll('.emj-n').length,failed:_emjFails.slice(),
+    style:emojiStyle(),online:(typeof navigator!=='undefined'&&navigator.onLine!==false),page:(typeof location!=='undefined'?String(location.protocol):'?'),observer:typeof MutationObserver!=='undefined'};
+}
+function showEmojiStatus(){
+  var s=emojiStatus(),el=document.getElementById('emjStatus');
+  if(!el)return;
+  el.textContent='Style: '+(s.style==='fluent'?'Windows':'phone default')+' | images loaded: '+s.loaded+' | loading: '+s.loading+' | using phone emoji: '+s.fallback+' | online: '+(s.online?'yes':'no')+' | page: '+s.page+' | observer: '+(s.observer?'yes':'no')+(s.failed.length?' | first failed: '+s.failed[0]:'');
 }
 </script>
 <script>

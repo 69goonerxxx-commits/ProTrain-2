@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <link rel="apple-touch-icon" href="icon-192.png"/>
 <title>ProTrain v8.1.0</title>
-<meta name="build-id" content="v8.1.0-b8245200"/>
+<meta name="build-id" content="v8.1.0-00da0eaf"/>
 <link rel="manifest" href="manifest.json"/>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet"/>
 <style>
@@ -680,7 +680,7 @@ select.pe-in{width:auto;max-width:140px}
 
 <script>
 'use strict';
-var BUILD_ID='v8.1.0-b8245200',APP_VERSION='v8.1.0';
+var BUILD_ID='v8.1.0-00da0eaf',APP_VERSION='v8.1.0';
 var EMOJI_WARM=["⏱", "⚖", "⚠", "⚡", "✅", "✈", "✏", "✨", "❌", "🌅", "🌱", "🎉", "🎯", "🏆", "🏋", "💧", "💪", "💯", "💾", "📅", "📈", "📊", "📋", "📖", "📝", "🔄", "🔍", "🔥", "🗑", "🗓", "😴", "🙃", "🚴", "🚶", "🤒", "🥇", "🥈", "🥉", "🦵", "🦾", "🧘", "🫧"];
 // Exercise ids are permanent keys (the day is looked up from the EX arrays, never parsed from the id).
 // If you ever must rename an id, add  oldId:'newId'  here and existing history follows it automatically.
@@ -1567,44 +1567,46 @@ function load(){
 function save(d){var str=JSON.stringify(d);localStorage.setItem('ppl_v4',str);_ldRaw=str;_ldObj=d;}
 function todayCheckKey(){return 'ppl_checks_'+toKey(new Date());}
 // ── CYCLING COMMUTE TRACKER ──────────────────────────────────
+function ensureCycling(data,key){
+  if(!data.logs[key]||typeof data.logs[key]!=='object')data.logs[key]={};
+  var c=data.logs[key].cycling;if(!c||typeof c!=='object')c=data.logs[key].cycling={};
+  ['morning','afternoon'].forEach(function(l){if(!c[l]||typeof c[l]!=='object')c[l]={done:false,km:'',min:''};});
+  if(!Array.isArray(c.extra))c.extra=[];
+  return c;
+}
 function loadCycling(key){
-  var log=load().logs[key];
-  return (log&&log.cycling)||{morning:{done:false,km:'',min:''},afternoon:{done:false,km:'',min:''},extra:[]};
+  var log=load().logs[key],c=(log&&log.cycling)||{};
+  var leg=function(x){return x&&typeof x==='object'?x:{done:false,km:'',min:''};};
+  return {morning:leg(c.morning),afternoon:leg(c.afternoon),extra:Array.isArray(c.extra)?c.extra:[]};
 }
 function toggleCyclingLeg(key,leg){
-  var data=load();
-  if(!data.logs[key])data.logs[key]={};
-  if(!data.logs[key].cycling)data.logs[key].cycling={morning:{done:false,km:'',min:''},afternoon:{done:false,km:'',min:''},extra:[]};
-  data.logs[key].cycling[leg].done=!data.logs[key].cycling[leg].done;
+  var data=load(),c=ensureCycling(data,key);
+  if(!c[leg])return;
+  c[leg].done=!c[leg].done;
   save(data);
   render(curScreen);
 }
 function updCyclingField(key,leg,field,val){
-  var data=load();
-  if(!data.logs[key])data.logs[key]={};
-  if(!data.logs[key].cycling)data.logs[key].cycling={morning:{done:false,km:'',min:''},afternoon:{done:false,km:'',min:''},extra:[]};
-  data.logs[key].cycling[leg][field]=val===''?'':parseFloat(val);
+  var data=load(),c=ensureCycling(data,key);
+  if(!c[leg])return;
+  c[leg][field]=val===''?'':parseFloat(val);
   save(data);
 }
 function addCyclingExtra(key){
-  var data=load();
-  if(!data.logs[key])data.logs[key]={};
-  if(!data.logs[key].cycling)data.logs[key].cycling={morning:{done:false,km:'',min:''},afternoon:{done:false,km:'',min:''},extra:[]};
-  if(!data.logs[key].cycling.extra)data.logs[key].cycling.extra=[];
-  data.logs[key].cycling.extra.push({km:'',min:''});
+  var data=load(),c=ensureCycling(data,key);
+  c.extra.push({km:'',min:''});
   save(data);
   render(curScreen);
 }
 function updCyclingExtra(key,idx,field,val){
-  var data=load();
-  if(!data.logs[key]||!data.logs[key].cycling||!data.logs[key].cycling.extra)return;
-  data.logs[key].cycling.extra[idx][field]=val===''?'':parseFloat(val);
+  var data=load(),c=ensureCycling(data,key);
+  if(!c.extra[idx])return;
+  c.extra[idx][field]=val===''?'':parseFloat(val);
   save(data);
 }
 function removeCyclingExtra(key,idx){
-  var data=load();
-  if(!data.logs[key]||!data.logs[key].cycling||!data.logs[key].cycling.extra)return;
-  data.logs[key].cycling.extra.splice(idx,1);
+  var data=load(),c=ensureCycling(data,key);
+  c.extra.splice(idx,1);
   save(data);
   render(curScreen);
 }
@@ -1645,7 +1647,7 @@ function getCyclingWeekStats(weekStart){
     var cyc=loadCycling(toKey(d));
     ['morning','afternoon'].forEach(function(leg){
       total++;
-      if(cyc[leg].done){done++;if(cyc[leg].km)km+=+cyc[leg].km;if(cyc[leg].min)min+=+cyc[leg].min;}
+      if(cyc[leg]&&cyc[leg].done){done++;if(cyc[leg].km)km+=+cyc[leg].km;if(cyc[leg].min)min+=+cyc[leg].min;}
     });
     (cyc.extra||[]).forEach(function(ex){done++;total++;if(ex.km)km+=+ex.km;if(ex.min)min+=+ex.min;});
   }
@@ -3110,7 +3112,7 @@ function rToday(){
       '<div style="padding:24px 20px;color:var(--danger);font-family:\'Barlow\',sans-serif">'
       +'<div style="font-size:14px;font-weight:700;margin-bottom:8px">ProTrain Error</div>'
       +'<div style="font-size:12px;opacity:.8">'+e.message+'</div>'
-      +'<div style="font-size:11px;opacity:.5;margin-top:6px">Check console for details</div></div>';
+      +'<div style="font-size:11px;opacity:.5;margin-top:6px;word-break:break-all">'+esc(String((e&&e.stack)||'').split('\n').slice(1,3).join(' ').replace(/https?:\/\/[^ )]*\//g,''))+'</div></div>';
     console.error('rToday error:',e);
   }
 }
@@ -4449,7 +4451,6 @@ function resetGuideChecks(){
 var mExList=[],mPairs={},mPairsRev={},mMadeUpFor=null;
 var mDay=null; // the training day being logged (differs from the schedule when logging on a rest day)
 function openModal(type,key,dayOverride){
-  acquireWakeLock();
   try{applyAutoVolume();}catch(e){}
   mType=type;mKey=key;
   var date=new Date(key+'T00:00:00');
@@ -4459,7 +4460,8 @@ function openModal(type,key,dayOverride){
   var dayKey=type==='morning'?'morning':pd;
   var baseList=type==='morning'?EX.morning:EX[pd];
   var customForDay=loadCustomExercises().filter(function(ex){return ex.day===dayKey;});
-  if(!baseList){showToast('No workout is scheduled for this day','var(--muted)');return;}
+  if(!baseList){showToast('No workout is scheduled for this day','var(--muted)');mType=null;mKey=null;mDay=null;mMadeUpFor=null;return;}
+  acquireWakeLock();
   var exList=baseList.concat(customForDay);
   var log=load().logs[key]||{};
   var existing=(type==='morning'?log.morning:log.ppl)||{};
@@ -4469,7 +4471,7 @@ function openModal(type,key,dayOverride){
     var prev=existing.exercises?existing.exercises[activeId]:null;
     mState[activeId]={
       done:!!(prev&&prev.done),
-      sets:prev&&prev.sets&&prev.sets.length?prev.sets:
+      sets:prev&&prev.sets&&prev.sets.length?prev.sets.map(function(q){return Object.assign({},q);}):
         Array.from({length:ex.sets||3},function(){return emptySet(ex);}),
       baseExId:ex.id
     };
@@ -5345,41 +5347,6 @@ function setProgramStart(val){
   else localStorage.removeItem('pt_program_start');
   rToday();
 }
-// Init
-(function(){
-  var th=localStorage.getItem('ppl_theme');
-  if(!th){th='dark';localStorage.setItem('ppl_theme','dark');}
-  var fs=localStorage.getItem('ppl_font')||'m';
-  applyTheme(th);
-  applyFont(fs);
-  window._showSummary=false;
-})();
-rToday();
-rebuildALLEX();
-checkOnboarding();
-// One-time migration: backfill exercise names into existing logs
-(function migrateExNames(){
-  if(localStorage.getItem('pt_migrated_names')==='1')return;
-  try{
-    var data=load();
-    var changed=false;
-    Object.values(data.logs).forEach(function(log){
-      ['morning','ppl'].forEach(function(type){
-        var sess=log[type];
-        if(!sess||!sess.exercises)return;
-        Object.entries(sess.exercises).forEach(function(e){
-          var id=e[0],entry=e[1];
-          if(!entry.name){
-            var ex=ALL_EX.find(function(x){return x.id===id;});
-            if(ex){entry.name=ex.name;changed=true;}
-          }
-        });
-      });
-    });
-    if(changed){save(data);}
-    localStorage.setItem('pt_migrated_names','1');
-  }catch(e){}
-})();
 
 // ── TRAINING SETTINGS (units, weight steps, plan) ──
 function saveStep(v){
@@ -5938,6 +5905,43 @@ try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();
 try{document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible')autoUpdateCheck();});}catch(e){}
 autoUpdateCheck();
 if(typeof setTimeout!=='undefined')setTimeout(warmOfflineCache,4000);
+// ── STARTUP (runs last, after every module above has defined its functions and variables) ──
+// The first screen is drawn here. Drawing it earlier let it read variables from later modules before they existed.
+// Init
+(function(){
+  var th=localStorage.getItem('ppl_theme');
+  if(!th){th='dark';localStorage.setItem('ppl_theme','dark');}
+  var fs=localStorage.getItem('ppl_font')||'m';
+  applyTheme(th);
+  applyFont(fs);
+  window._showSummary=false;
+})();
+rToday();
+rebuildALLEX();
+checkOnboarding();
+// One-time migration: backfill exercise names into existing logs
+(function migrateExNames(){
+  if(localStorage.getItem('pt_migrated_names')==='1')return;
+  try{
+    var data=load();
+    var changed=false;
+    Object.values(data.logs).forEach(function(log){
+      ['morning','ppl'].forEach(function(type){
+        var sess=log[type];
+        if(!sess||!sess.exercises)return;
+        Object.entries(sess.exercises).forEach(function(e){
+          var id=e[0],entry=e[1];
+          if(!entry.name){
+            var ex=ALL_EX.find(function(x){return x.id===id;});
+            if(ex){entry.name=ex.name;changed=true;}
+          }
+        });
+      });
+    });
+    if(changed){save(data);}
+    localStorage.setItem('pt_migrated_names','1');
+  }catch(e){}
+})();
 </script>
 <script>
   if ('serviceWorker' in navigator) {

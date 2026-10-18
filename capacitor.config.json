@@ -1,0 +1,12 @@
+{
+  "appId": "com.program.protrain",
+  "appName": "ProTrain",
+  "webDir": "www",
+  "backgroundColor": "#0c0c0e",
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_protrain",
+      "iconColor": "#F5A623"
+    }
+  }
+}

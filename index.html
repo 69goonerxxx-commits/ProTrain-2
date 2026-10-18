@@ -8,8 +8,8 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <link rel="apple-touch-icon" href="icon-192.png"/>
-<title>ProTrain v8.2.0</title>
-<meta name="build-id" content="v8.2.0-6da612c3"/>
+<title>ProTrain v8.2</title>
+<meta name="build-id" content="v8.2-463aaf64"/>
 <link rel="manifest" href="manifest.json"/>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet"/>
 <style>
@@ -624,7 +624,40 @@ select.pe-in{width:auto;max-width:140px}
 .rv-delta{display:block;color:var(--success)}
 
 .walk-time{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted)}
-.walk-time input{background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 8px;font-size:14px;min-width:96px}
+.walk-time input{background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 8px;font-size:14px;width:100%;min-width:0}
+
+/* layout fixes: inputs may shrink and rows wrap, so nothing makes a screen scroll sideways */
+.set-row{flex-wrap:wrap;row-gap:6px}
+.set-row .sinput{flex:1 1 56px;min-width:0;width:auto}
+.set-row .rpe-inp{flex:0 0 44px;max-width:44px}
+.set-lbl{flex:0 0 26px;width:26px}
+.set-type{flex:0 0 26px}
+.set-x{flex:0 0 24px}
+.sinput-lbl{flex:0 0 28px}
+#mBody,.screen{overflow-x:hidden}
+@keyframes toastin{from{transform:translateX(-50%) translateY(100%)}to{transform:translateX(-50%) translateY(0)}}
+.toast{animation:toastin .3s ease;max-width:calc(100% - 24px);white-space:normal;text-align:center}
+.cyc-fields{flex-wrap:wrap}
+.walk-leg{flex-wrap:wrap}
+.walk-leg .cyc-leg-lbl{flex:1 0 100%}
+.walk-leg .cyc-fields{margin-left:0;width:100%}
+.walk-leg .cyc-fields input{flex:1 1 56px;width:auto;min-width:0}
+.walk-times{display:flex;gap:8px;margin-top:8px}
+.walk-time{flex:1 1 0;min-width:0}
+
+.date-row{flex-wrap:wrap}
+.date-inp{flex:1 1 130px;min-width:0}
+.stat-card{min-width:0;padding:14px 6px}
+.stat-lbl{overflow-wrap:anywhere}
+.lex-name{min-width:0}
+@media (max-width:340px){
+  .lex-hdr{padding-left:12px;padding-right:12px;gap:6px}
+  .lex-name{max-width:110px}
+}
+
+.walk-fields{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.walk-fields .walk-time{flex:1 1 40%}
+.walk-fields .walk-time input{text-align:center}
 </style>
 </head>
 <body>
@@ -638,7 +671,7 @@ select.pe-in{width:auto;max-width:140px}
 <!-- ONBOARDING -->
 <div class="ob-overlay" id="obOverlay">
   <div class="ob-logo">⚡</div>
-  <div class="ob-title">ProTrain Program <span style="font-size:14px;opacity:.6">v8.2.0</span></div>
+  <div class="ob-title">ProTrain Program <span style="font-size:14px;opacity:.6">v8.2</span></div>
   <div class="ob-sub">Your personal hypertrophy tracker.<br>Built around your home gym setup.</div>
   <div class="ob-section">
     <div class="ob-section-title">What is this split?</div>
@@ -700,7 +733,7 @@ select.pe-in{width:auto;max-width:140px}
 
 <script>
 'use strict';
-var BUILD_ID='v8.2.0-6da612c3',APP_VERSION='v8.2.0';
+var BUILD_ID='v8.2-463aaf64',APP_VERSION='v8.2';
 var EMOJI_WARM=["⏱", "⚖", "⚠", "⚡", "✅", "✈", "✏", "✨", "❌", "🌅", "🌱", "🎉", "🎯", "🏆", "🏋", "💧", "💪", "💯", "💾", "📅", "📈", "📊", "📋", "📖", "📝", "🔄", "🔍", "🔥", "🗑", "🗓", "😴", "🙃", "🚴", "🚶", "🤒", "🥇", "🥈", "🥉", "🦵", "🦾", "🧘", "🫧"];
 // Exercise ids are permanent keys (the day is looked up from the EX arrays, never parsed from the id).
 // If you ever must rename an id, add  oldId:'newId'  here and existing history follows it automatically.
@@ -1743,12 +1776,13 @@ function renderWalkCard(key){
   var w=loadWalk(key),jm=w.type==='walkjog',q=function(f){return 'onchange="updWalk(\''+key+'\',\''+f+'\',this.value)"';};
   var h='<div class="cyc-card" id="walkcard_'+key+'"><div class="cyc-hdr" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span>'+(jm?'&#127939; Walk + jog':'&#128694; Walking')+'</span>';
   h+='<span class="sz-btns"><button class="sz-btn'+(jm?'':' active')+'" aria-pressed="'+(!jm)+'" onclick="setWalkType(\''+key+'\',\'walk\')">Walk</button><button class="sz-btn'+(jm?' active':'')+'" aria-pressed="'+jm+'" onclick="setWalkType(\''+key+'\',\'walkjog\')">Walk + jog</button></span></div>';
-  h+='<div class="cyc-leg"><div class="cyc-leg-lbl">'+(jm?'Today\'s walk + jog':'Daily walk')+'</div><div class="cyc-fields">';
-  h+='<input type="number" inputmode="numeric" placeholder="min" id="walkmin_'+key+'" value="'+(w.min||'')+'" '+q('min')+'>';
-  if(jm)h+='<input type="number" inputmode="numeric" placeholder="jog min" id="walkjog_'+key+'" value="'+(w.jog||'')+'" aria-label="Minutes of jogging" '+q('jog')+'>';
-  h+='<input type="number" inputmode="decimal" placeholder="km" value="'+(w.km||'')+'" '+q('km')+'>';
-  h+='<input type="number" inputmode="numeric" placeholder="steps" style="width:64px" value="'+(w.steps||'')+'" '+q('steps')+'>';
-  h+='</div><div class="cyc-fields" style="margin-top:8px"><label class="walk-time"><span>Started</span><input type="time" id="walkstart_'+key+'" value="'+esc(w.start||'')+'" '+q('start')+'></label><label class="walk-time"><span>Ended</span><input type="time" id="walkend_'+key+'" value="'+esc(w.end||'')+'" '+q('end')+'></label></div></div>';
+  var fld=function(lbl,inner){return '<label class="walk-time"><span>'+lbl+'</span>'+inner+'</label>';};
+  h+='<div class="walk-fields">';
+  h+=fld('Minutes','<input type="number" inputmode="numeric" placeholder="min" id="walkmin_'+key+'" value="'+(w.min||'')+'" '+q('min')+'>');
+  if(jm)h+=fld('Jogging min','<input type="number" inputmode="numeric" placeholder="jog min" id="walkjog_'+key+'" value="'+(w.jog||'')+'" aria-label="Minutes of jogging" '+q('jog')+'>');
+  h+=fld('Distance (km)','<input type="number" inputmode="decimal" placeholder="km" value="'+(w.km||'')+'" '+q('km')+'>');
+  h+=fld('Steps','<input type="number" inputmode="numeric" placeholder="steps" value="'+(w.steps||'')+'" '+q('steps')+'>');
+  h+='</div><div class="walk-times"><label class="walk-time"><span>Started</span><input type="time" id="walkstart_'+key+'" value="'+esc(w.start||'')+'" '+q('start')+'></label><label class="walk-time"><span>Ended</span><input type="time" id="walkend_'+key+'" value="'+esc(w.end||'')+'" '+q('end')+'></label></div>';
   if(isRest(new Date(key+'T00:00:00')))h+='<div class="walk-note">Rest day: an easy 30-45 min walk is a good use of it.</div>';
   h+='<div id="walksum_'+key+'">'+renderWalkSummary(key)+'</div></div>';
   return h;
@@ -3607,12 +3641,10 @@ var changelogOpen=false;
 function toggleChangelog(){changelogOpen=!changelogOpen;rProg();}
 function renderChangelog(){
   var entries=[
-    {ver:'v8.2.0',items:[
+    {ver:'v8.2',items:[
       'Walk + jog: the Walking card switches between Walk and Walk + jog (jogging minutes count as active minutes and as leg load for recovery)',
       'Walks and jogs have Started and Ended times; the minutes fill in from them',
-      'Fixed choosing a resistance band colour marking the whole exercise as done'
-    ]},
-    {ver:'v8.1.1',items:[
+      'Fixed choosing a resistance band colour marking the whole exercise as done',
       'Short on time: tell the app how many minutes you have and it trims today\'s workout (extras and isolation work first, main lifts last); each day shows its estimated length',
       'Weekly review: workouts done and skipped, sets per muscle against your targets, PRs, effort, check-ins, activity and suggestions; opens from Today on Sundays and Mondays, the Week screen or Settings, and can be shared as text',
       'Fixed muscle volume ignoring workouts logged on rest days or as made-up days',
@@ -4212,7 +4244,7 @@ function rProg(){
   h+='</div>';
   h+='<div class="sec-title">Data</div>';
   h+='<div style="padding:0 20px 6px;display:flex;align-items:center;justify-content:space-between">';
-  h+='<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:11px;letter-spacing:2px;color:var(--muted);text-transform:uppercase">ProTrain Program <span style="color:var(--morning)">v8.2.0</span></span>';
+  h+='<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:11px;letter-spacing:2px;color:var(--muted);text-transform:uppercase">ProTrain Program <span style="color:var(--morning)">v8.2</span></span>';
   h+='<button onclick="toggleChangelog()" style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-family:\'Barlow Condensed\',sans-serif;letter-spacing:1px">📋 '+(changelogOpen?'Hide':'What&#39;s New')+'</button>';
   h+='</div>';
   if(changelogOpen)h+=renderChangelog();
@@ -5238,7 +5270,7 @@ function exportData(auto){
   var bands={},calib={};
   for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k&&k.startsWith('band_'))bands[k]=localStorage.getItem(k);if(k&&k.startsWith('pt_calib_'))calib[k]=localStorage.getItem(k);}
   data._meta={
-    version:'v8.2.0',
+    version:'v8.2',
     prCount:localStorage.getItem('ppl_pr_count4'),
     theme:localStorage.getItem('ppl_theme'),
     font:localStorage.getItem('ppl_font'),
@@ -5310,7 +5342,7 @@ function importData(e){
       }
       save(existing);
       var fileVer=parsed._meta&&parsed._meta.version;
-      var curVer='v8.2.0';
+      var curVer='v8.2';
       var themeChanged=parsed._meta&&parsed._meta.theme&&parsed._meta.theme!==localStorage.getItem('ppl_theme');
       var fontChanged=parsed._meta&&parsed._meta.font&&parsed._meta.font!==localStorage.getItem('ppl_font');
       var msg=document.getElementById('dataMsg');

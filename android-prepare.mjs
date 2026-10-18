@@ -15,7 +15,7 @@ function must(cond, msg) { if (!cond) throw new Error('android-prepare: ' + msg)
 const gradlePath = path.join(app, 'build.gradle');
 let gradle = fs.readFileSync(gradlePath, 'utf8');
 must(/versionCode\s+\d+/.test(gradle) && /versionName\s+"[^"]*"/.test(gradle), 'versionCode/versionName not found in app/build.gradle');
-gradle = gradle.replace(/versionCode\s+\d+/, `versionCode ${buildNumber}`).replace(/versionName\s+"[^"]*"/, `versionName "${pkg.version}"`);
+gradle = gradle.replace(/versionCode\s+\d+/, `versionCode ${buildNumber}`).replace(/versionName\s+"[^"]*"/, `versionName "${pkg.appVersion}"`);
 fs.writeFileSync(gradlePath, gradle);
 
 // 2. icons: the PNGs sit in the repo root as "<res folder>__<file name>.png" (no folders needed when uploading to GitHub)
@@ -65,4 +65,4 @@ for (const p of ['VIBRATE', 'POST_NOTIFICATIONS', 'USE_EXACT_ALARM']) {
 }
 fs.writeFileSync(manPath, man);
 
-console.log(`prepared: ${pkg.version} (build ${buildNumber}), icons, permissions`);
+console.log(`prepared: ${pkg.appVersion} (build ${buildNumber}), icons, permissions`);

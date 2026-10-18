@@ -141,6 +141,32 @@
     if(!a&&!RT&&pendingEnd>Date.now())nativeSchedule();
     if(a){nativeCancel();if(RT)RT.getState().then(applyState).catch(function(){});}
   }
+  // Settings > "Test timer notification": starts a 45 s test and reports what Android says about it
+  window.testRestNotification=function(){
+    var lines=[];
+    function msg(e){return String((e&&e.message)||e);}
+    function show(){try{alert(lines.join('\n'));}catch(e){toast(lines.join(' | '),'var(--muted)');}}
+    lines.push('Timer plugin: '+(RT?'found':'MISSING'));
+    lines.push('Local notifications plugin: '+(LN?'found':'MISSING'));
+    var perm=LN?LN.checkPermissions().then(function(p){
+      lines.push('Permission: '+p.display);
+      if(p.display==='prompt'||p.display==='prompt-with-rationale')return LN.requestPermissions().then(function(q){lines.push('Permission after asking: '+q.display);});
+    }).catch(function(e){lines.push('Permission check failed: '+msg(e));}):Promise.resolve();
+    perm.then(function(){
+      if(!RT){show();return;}
+      return RT.start({endMs:Date.now()+45000,totalMs:45000,title:'Test \u00b7 ProTrain',prefix:'This is a test',nextLabel:'Ends at',doneTitle:'Test complete',doneText:'The rest timer notification works.'})
+        .then(function(){lines.push('Start call: ok');},function(e){lines.push('Start call FAILED: '+msg(e));})
+        .then(function(){return new Promise(function(r){setTimeout(r,800);});})
+        .then(function(){return RT.debug();})
+        .then(function(d){
+          lines.push('Android version (API): '+d.sdk);
+          lines.push('Notifications allowed for ProTrain: '+(d.enabled?'yes':'NO'));
+          lines.push('Timer channel importance: '+d.channelImportance+(d.channelImportance===0?' (BLOCKED)':''));
+          lines.push('Timer notification posted: '+(d.liveShown?'yes':'NO'));
+        },function(e){lines.push('Debug call failed: '+msg(e));})
+        .then(show);
+    });
+  };
   document.addEventListener('visibilitychange',function(){setActive(document.visibilityState!=='hidden');});
   if(APP&&APP.addListener){try{APP.addListener('appStateChange',function(s){setActive(!!s.isActive);});}catch(e){}}
 })();

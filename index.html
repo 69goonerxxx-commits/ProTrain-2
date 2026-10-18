@@ -3062,31 +3062,55 @@ function togExTimer(exId,setIdx){
     startExTmr(exId,setIdx);
   }
 }
-function scheduleRestNotification(endTimestamp){
-  cancelRestNotification();
+// Web version: Android Chrome only allows notifications through the service worker, so go through that.
+// (The Android app replaces both functions below with a native live countdown.)
+function webNotify(title,opts){
+  opts=opts||{};opts.icon=opts.icon||'icon-192.png';opts.badge=opts.badge||'icon-192.png';
+  try{
+    if('serviceWorker' in navigator&&navigator.serviceWorker.ready){
+      return navigator.serviceWorker.ready.then(function(reg){return reg.showNotification(title,opts);}).catch(function(){});
+    }
+  }catch(e){}
+  try{new Notification(title,opts);}catch(e){}
+  return Promise.resolve();
+}
+function closeRestNotifs(){
+  try{
+    if('serviceWorker' in navigator&&navigator.serviceWorker.ready){
+      navigator.serviceWorker.ready.then(function(reg){return reg.getNotifications({tag:'pt-rest'});}).then(function(list){list.forEach(function(n){n.close();});}).catch(function(){});
+    }
+  }catch(e){}
+}
+function scheduleRestNotification(endTimestamp,meta){
+  if(restNotifTimeout){clearTimeout(restNotifTimeout);restNotifTimeout=null;}
   if(!('Notification' in window))return;
   if(Notification.permission==='default'){
     Notification.requestPermission().then(function(perm){
-      if(perm==='granted'&&restInterval)scheduleRestNotification(endTimestamp);
+      if(perm==='granted'&&restInterval)scheduleRestNotification(endTimestamp,meta);
     });
     return;
   }
   if(Notification.permission!=='granted')return;
   var delay=endTimestamp-Date.now();
   if(delay<=0)return;
+  meta=meta||{};
+  var at=new Date(endTimestamp).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+  // shown for the whole rest (no ticking on the web, so it states when the rest ends)
+  webNotify(meta.title||'Rest',{body:(meta.prefix?meta.prefix+'. ':'')+(meta.nextLabel||'Next set at')+' '+at,tag:'pt-rest',silent:true,requireInteraction:true});
+  // replaces it when the rest ends (only fires while the page is still running)
   restNotifTimeout=setTimeout(function(){
     restNotifTimeout=null;
-    // Only show if the app is actually backgrounded — the in-app beep/vibrate covers foreground
-    if(document.visibilityState==='hidden'){
-      try{new Notification('Rest complete',{body:'Time for your next set.',tag:'pt-rest',renotify:true});}catch(e){}
-    }
+    var hidden=document.visibilityState==='hidden';
+    webNotify('Rest complete',{body:meta.doneText||'Time for your next set.',tag:'pt-rest',renotify:true,silent:!hidden,vibrate:[300,100,300,100,300]});
   },delay);
 }
 function cancelRestNotification(){
   if(restNotifTimeout){clearTimeout(restNotifTimeout);restNotifTimeout=null;}
+  closeRestNotifs();
 }
 document.addEventListener('visibilitychange',function(){
   if(document.visibilityState==='visible'&&restInterval)tickRest();
+  if(document.visibilityState==='visible'&&!restInterval)closeRestNotifs();
 });
 
 // ── SESSION TIME ───────────────────────────────────────────────
@@ -3700,7 +3724,7 @@ function renderChangelog(){
       'Logging a workout from the Guide also counts as making up an earlier missed workout of the same type; the Guide tells you which one before you start',
       'The rest timer now stays pinned at the top of the log sheet while you scroll',
       'The line under the rest and hold timers shrinks as time runs out and turns red for the last 10 seconds',
-      'Rest timer notification: during every rest, in the app or out of it, a live countdown shows in your notifications with the exercise, the time your next set is due, and +30 s and Skip rest buttons. A louder alert pops up when rest ends',
+      'Rest timer notification: during every rest, in the app or out of it, a live countdown shows in your notifications with the exercise, the time your next set is due, and +30 s and Skip rest buttons. A louder alert pops up when rest ends. (Android app only. The web version shows a notification with the exercise and when your next set is due, then Rest complete at the end)',
       'Added a short note explaining the W, D and F set tags (tap the circle next to a set to cycle them)'
     ]},
     {ver:'v8.2',items:[
@@ -5625,6 +5649,7 @@ function renderTrainingSettings(){
   h+='<div class="settings-row"><span class="settings-lbl">Text size</span><div class="sz-btns">'+[['s','S'],['m','M'],['l','L']].map(function(t){return '<button class="sz-btn'+(curFont===t[0]?' active':'')+'" onclick="setFontSize(\''+t[0]+'\')">'+t[1]+'</button>';}).join('')+'</div></div>';
   h+='<div class="pb-actions" style="margin-top:6px"><button onclick="toggleEmoji()">Emoji: '+(emojiStyle()==='native'?'phone default':'Windows style')+'</button></div>';
   h+='<div style="'+lbl+'">App</div><div class="pb-actions" style="margin-top:6px"><button onclick="runUpdateCheck()">Check for updates</button><button class="pb-quiet" onclick="runOfflineCheck()">Check offline</button></div>';
+  if(window.testRestNotification)h+='<div style="'+lbl+'">Rest timer notification</div><div class="pb-actions" style="margin-top:6px"><button onclick="testRestNotification()">Test timer notification</button></div><div style="font-size:12px;color:var(--muted);margin-top:6px">Starts a 45 second test and tells you what Android says about it.</div>';
   h+='<div class="walk-note">Version '+APP_VERSION+' ('+esc(BUILD_ID)+')</div><div id="updStatus" class="walk-note" style="word-break:break-word"></div>';
   h+='<div class="walk-note">Windows-style emoji use Microsoft\'s open-source Fluent Emoji (MIT licence). They download once, then work offline. <button class="walk-goal-btn" onclick="showEmojiStatus()">check emoji status</button></div><div id="emjStatus" class="walk-note" style="word-break:break-all"></div>';
   h+='</div>';

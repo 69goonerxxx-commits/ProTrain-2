@@ -5,7 +5,13 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.Build;
+import android.service.notification.StatusBarNotification;
+import androidx.core.app.NotificationManagerCompat;
 
 // The bridge the web app uses: start the live countdown notification, read what happened to it, clear it.
 @CapacitorPlugin(name = "RestTimer")
@@ -47,5 +53,35 @@ public class RestTimerPlugin extends Plugin {
   public void clear(PluginCall call) {
     RestTimerCore.clear(getContext());
     call.resolve();
+  }
+
+  // for the in-app "Test timer notification" button: reports what Android itself says about our notification
+  @PluginMethod
+  public void debug(PluginCall call) {
+    Context c = getContext();
+    JSObject r = new JSObject();
+    r.put("sdk", Build.VERSION.SDK_INT);
+    r.put("enabled", NotificationManagerCompat.from(c).areNotificationsEnabled());
+    NotificationManager m = RestTimerCore.nm(c);
+    int importance = -2;
+    boolean live = false;
+    int posted = 0;
+    if (m != null) {
+      if (Build.VERSION.SDK_INT >= 26) {
+        NotificationChannel ch = m.getNotificationChannel(RestTimerCore.CH_LIVE);
+        importance = ch == null ? -1 : ch.getImportance();
+      }
+      if (Build.VERSION.SDK_INT >= 23) {
+        StatusBarNotification[] list = m.getActiveNotifications();
+        posted = list.length;
+        for (StatusBarNotification n : list) {
+          if (n.getId() == RestTimerCore.ID_LIVE) live = true;
+        }
+      }
+    }
+    r.put("channelImportance", importance);
+    r.put("liveShown", live);
+    r.put("postedCount", posted);
+    call.resolve(r);
   }
 }

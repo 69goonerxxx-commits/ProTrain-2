@@ -102,6 +102,8 @@ final class RestTimerCore {
         .putString("title", title).putString("prefix", prefix).putString("nextLabel", nextLabel)
         .putString("doneTitle", doneTitle).putString("doneText", doneText)
         .apply();
+    NotificationManager m = nm(c);
+    if (m != null) m.cancel(ID_DONE);
     showLive(c);
     scheduleDone(c, end);
   }

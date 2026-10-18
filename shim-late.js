@@ -65,11 +65,11 @@
     return origClick.apply(this,arguments);
   };
 
-  // ── Rest timer outside the app: a live countdown notification (native), with +30 s and Skip rest buttons ──
-  // Only shown while the app is in the background; the in-app timer covers the foreground.
-  // If the native piece is missing, it falls back to a plain "Rest complete" alert.
-  var NOTIF_ID=4201,pendingEnd=0,active=true,channelReady=false,notifOK=false,restMeta=null;
+  // ── Rest timer notification: a live countdown (native) with +30 s and Skip rest buttons, shown for the whole rest ──
+  // Works in the app and out of it. If the native piece is missing, it falls back to a plain "Rest complete" alert.
+  var NOTIF_ID=4201,pendingEnd=0,active=true,channelReady=false,restMeta=null,pollT=null,warned={};
   var RT=(C&&C.registerPlugin)?C.registerPlugin('RestTimer'):null;
+  function warnOnce(key,msg){if(warned[key])return;warned[key]=1;toast(msg,'var(--muted)');}
   function ensureChannel(){
     if(channelReady||!LN||!LN.createChannel)return Promise.resolve();
     channelReady=true;
@@ -83,10 +83,29 @@
       return LN.schedule({notifications:[{id:NOTIF_ID,title:'Rest complete',body:'Time for your next set.',channelId:'rest',schedule:{at:new Date(end),allowWhileIdle:true}}]});
     }).catch(function(){});
   }
-  function bgStart(){
-    if(!notifOK||pendingEnd<=Date.now())return;
+  // what happened to the notification (+30 s, Skip) since we last looked
+  function applyState(s){
+    try{
+      if(!s||!window.restInterval)return;
+      if(s.skipped){stopRestTimer();return;}
+      if(s.active&&s.endMs&&Math.abs(s.endMs-pendingEnd)>500){
+        pendingEnd=s.endMs;window.restEndTimestamp=s.endMs;
+        window.restTotalSecs=Math.max(window.restTotalSecs||0,Math.round((s.totalMs||0)/1000));
+        tickRest();
+      }
+    }catch(e){}
+  }
+  function poll(){
+    if(!RT)return;
+    if(pendingEnd<=0||pendingEnd<Date.now()-5000){stopPoll();return;}
+    RT.getState().then(applyState).catch(function(){});
+  }
+  function startPoll(){if(!pollT&&RT)pollT=setInterval(poll,1000);}
+  function stopPoll(){if(pollT){clearInterval(pollT);pollT=null;}}
+  function liveStart(){
+    if(pendingEnd<=Date.now())return;
     var m=restMeta||{};
-    if(!RT){nativeSchedule();return;}
+    if(!RT){if(!active)nativeSchedule();return;}
     RT.start({
       endMs:pendingEnd,
       totalMs:(window.restTotalSecs||0)*1000,
@@ -95,41 +114,32 @@
       nextLabel:m.nextLabel||'Next set at',
       doneTitle:m.doneTitle||'Rest complete',
       doneText:m.doneText||'Time for your next set.'
-    }).catch(function(){nativeSchedule();});
-  }
-  // back in the app: pick up anything done with the notification buttons, then remove the notification
-  function resumeSync(){
-    nativeCancel();
-    if(!RT)return;
-    RT.getState().then(function(s){
-      try{
-        if(!s||!window.restInterval)return;
-        if(s.skipped){stopRestTimer();}
-        else if(s.active&&s.endMs&&s.endMs!==pendingEnd){
-          pendingEnd=s.endMs;window.restEndTimestamp=s.endMs;
-          window.restTotalSecs=Math.max(window.restTotalSecs||0,Math.round((s.totalMs||0)/1000));
-          tickRest();
-        }
-      }catch(e){}
-    }).catch(function(){}).then(function(){try{RT.clear();}catch(e){}});
+    }).then(startPoll).catch(function(e){
+      warnOnce('rt','Timer notification is not available in this build ('+String((e&&e.message)||e).slice(0,80)+')');
+      if(!active)nativeSchedule();
+    });
   }
   window.scheduleRestNotification=function(end,meta){
     pendingEnd=end;restMeta=meta||null;nativeCancel();
-    if(!LN||end<=Date.now())return;
-    LN.checkPermissions().then(function(p){
+    if(end<=Date.now())return;
+    var ask=LN?LN.checkPermissions().then(function(p){
       if(p.display==='prompt'||p.display==='prompt-with-rationale')return LN.requestPermissions();
       return p;
-    }).then(function(p){
-      notifOK=!!(p&&p.display==='granted');
-      if(notifOK&&!active)bgStart();
-    }).catch(function(){});
+    }):Promise.resolve({display:'granted'});
+    ask.then(function(p){
+      if(p&&p.display==='denied'){
+        warnOnce('perm','Notifications are off for ProTrain. Turn them on in Android settings to see the rest timer outside the app.');
+        return;
+      }
+      liveStart();
+    }).catch(function(){liveStart();});
   };
-  window.cancelRestNotification=function(){pendingEnd=0;nativeCancel();if(RT){try{RT.clear();}catch(e){}}};
+  window.cancelRestNotification=function(){pendingEnd=0;stopPoll();nativeCancel();if(RT){try{RT.clear();}catch(e){}}};
   function setActive(a){
     if(a===active)return;
     active=a;
-    if(!a&&pendingEnd>Date.now())bgStart();
-    if(a)resumeSync();
+    if(!a&&!RT&&pendingEnd>Date.now())nativeSchedule();
+    if(a){nativeCancel();if(RT)RT.getState().then(applyState).catch(function(){});}
   }
   document.addEventListener('visibilitychange',function(){setActive(document.visibilityState!=='hidden');});
   if(APP&&APP.addListener){try{APP.addListener('appStateChange',function(s){setActive(!!s.isActive);});}catch(e){}}

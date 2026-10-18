@@ -112,6 +112,7 @@
       title:m.title||'Rest',
       prefix:m.prefix||'',
       nextLabel:m.nextLabel||'Next set at',
+      nextTarget:m.nextTarget||'',
       doneTitle:m.doneTitle||'Rest complete',
       doneText:m.doneText||'Time for your next set.'
     }).then(startPoll).catch(function(e){
@@ -164,10 +165,105 @@
           lines.push('Notifications allowed for ProTrain: '+(d.enabled?'yes':'NO'));
           lines.push('Timer channel importance: '+d.channelImportance+(d.channelImportance===0?' (BLOCKED)':''));
           lines.push('Timer notification posted: '+(d.liveShown?'yes':'NO'));
+          lines.push('Shrinking bar service: '+(d.service?'running':'NOT running (the bar will not shrink)'));
+          lines.push('Rest alert mode: '+d.mode);
         },function(e){lines.push('Debug call failed: '+msg(e));})
         .then(show);
     });
   };
+  // ── Alert settings: what happens when a rest ends (sound, vibrate only, silent, off) and the workout notification switch ──
+  window.syncNotifSettings=function(){
+    var m=localStorage.getItem('pt_alert');
+    if(m!=='vibrate'&&m!=='silent'&&m!=='off')m='sound';
+    if(RT&&RT.setSettings){try{RT.setSettings({mode:m,workout:localStorage.getItem('pt_workout_notif')!=='0'}).catch(function(){});}catch(e){}}
+    if(m==='off'&&window.restInterval){try{window.cancelRestNotification();}catch(e){}}
+    try{window.syncWorkoutReminders();}catch(e){}
+    try{wTick();}catch(e){}
+  };
+
+  // ── Workout in progress: a notification with session time and sets done, while a workout is open ──
+  var W={on:false,key:null,start:0,done:-1,total:-1};
+  function wTick(){
+    if(!RT||!RT.workoutUpdate)return;
+    var live=false,done=0,total=0,title='Workout';
+    try{
+      if(localStorage.getItem('pt_workout_notif')!=='0'&&typeof mType!=='undefined'&&mType==='ppl'&&mKey&&mKey===toKey(new Date())&&mState){
+        live=true;
+        Object.keys(mState).forEach(function(id){
+          workSets(mState[id].sets).forEach(function(st){total++;if(st&&st.done)done++;});
+        });
+        title=(DAY_SUBTITLES&&DAY_SUBTITLES[mDay])||'Workout';
+      }
+    }catch(e){live=false;}
+    if(!live){
+      if(W.on){W.on=false;W.key=null;W.done=-1;W.total=-1;try{RT.workoutEnd().catch(function(){});}catch(e){}}
+      return;
+    }
+    if(!W.on||W.key!==mKey){W.on=true;W.key=mKey;W.start=Date.now();W.done=-1;W.total=-1;}
+    if(W.done===done&&W.total===total)return;
+    W.done=done;W.total=total;
+    try{RT.workoutUpdate({startMs:W.start,done:done,total:total,title:title}).catch(function(){});}catch(e){}
+  }
+  setInterval(wTick,2000);
+
+  // ── Workout reminders: scheduled notifications for the next two weeks of training days ──
+  var REM_AM=6000,REM_PM=6100,remChan=false;
+  function remChannel(){
+    if(remChan||!LN||!LN.createChannel)return Promise.resolve();
+    remChan=true;
+    return LN.createChannel({id:'reminders',name:'Workout reminders',description:'Reminds you to train',importance:3,visibility:1,vibration:true}).catch(function(){});
+  }
+  function hm(v,def){var m=/^(\d\d):(\d\d)$/.exec(v||'')||/^(\d\d):(\d\d)$/.exec(def);return{h:+m[1],m:+m[2]};}
+  window.askNotifPermission=function(){
+    if(!LN)return;
+    LN.checkPermissions().then(function(p){
+      if(p.display==='prompt'||p.display==='prompt-with-rationale')return LN.requestPermissions();
+    }).catch(function(){});
+  };
+  window.syncWorkoutReminders=function(){
+    if(!LN)return;
+    var ids=[];
+    for(var i=0;i<14;i++){ids.push({id:REM_AM+i});ids.push({id:REM_PM+i});}
+    var clear=LN.cancel({notifications:ids}).catch(function(){});
+    if(localStorage.getItem('pt_rem_on')!=='1')return;
+    clear.then(function(){
+      var list=[],eve=localStorage.getItem('pt_rem_eve')==='1';
+      var t1=hm(localStorage.getItem('pt_rem_time'),'18:00'),t2=hm(localStorage.getItem('pt_rem_eve_time'),'20:30');
+      var base=new Date();base.setHours(0,0,0,0);
+      var logs=load().logs,paused=false;
+      try{paused=isPlanPaused();}catch(e){}
+      if(paused)return;
+      for(var i=0;i<14;i++){
+        var d=new Date(base);d.setDate(base.getDate()+i);
+        var key=toKey(d),day=pplDay(d);
+        if(!day||isRest(d)||beforeStart(d)||dayComplete(key,d))continue;
+        var lg=logs[key];if(lg&&lg.skip)continue;
+        var sub=(DAY_SUBTITLES&&DAY_SUBTITLES[day])||'training';
+        var at1=new Date(d.getFullYear(),d.getMonth(),d.getDate(),t1.h,t1.m);
+        if(at1.getTime()>Date.now()+5000)list.push({id:REM_AM+i,title:'Workout today',body:sub+' is on your plan. Time to train.',channelId:'reminders',schedule:{at:at1,allowWhileIdle:true}});
+        if(eve){
+          var at2=new Date(d.getFullYear(),d.getMonth(),d.getDate(),t2.h,t2.m);
+          if(at2.getTime()>Date.now()+5000&&at2.getTime()>at1.getTime())list.push({id:REM_PM+i,title:'Still time to train',body:'You have not logged '+sub+' yet today.',channelId:'reminders',schedule:{at:at2,allowWhileIdle:true}});
+        }
+      }
+      if(!list.length)return;
+      return remChannel().then(function(){return LN.schedule({notifications:list});});
+    }).catch(function(){});
+  };
+  // a saved workout cancels today's reminders; opening the app tops the two-week window back up
+  var origSaveSession=window.saveSession;
+  if(typeof origSaveSession==='function'){
+    window.saveSession=function(){
+      var r=origSaveSession.apply(this,arguments);
+      setTimeout(function(){try{window.syncWorkoutReminders();}catch(e){}},800);
+      return r;
+    };
+  }
+  setTimeout(function(){try{window.syncNotifSettings();}catch(e){}},1500);
+  document.addEventListener('visibilitychange',function(){
+    if(document.visibilityState==='visible'){try{window.syncWorkoutReminders();}catch(e){}}
+  });
+
   document.addEventListener('visibilitychange',function(){setActive(document.visibilityState!=='hidden');});
   if(APP&&APP.addListener){try{APP.addListener('appStateChange',function(s){setActive(!!s.isActive);});}catch(e){}}
 })();

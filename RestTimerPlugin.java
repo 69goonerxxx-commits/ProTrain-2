@@ -32,6 +32,7 @@ public class RestTimerPlugin extends Plugin {
         d.optString("title", "Rest"),
         d.optString("prefix", ""),
         d.optString("nextLabel", "Next set at"),
+        d.optString("nextTarget", ""),
         d.optString("doneTitle", "Rest complete"),
         d.optString("doneText", "Time for your next set."));
     call.resolve();
@@ -47,6 +48,33 @@ public class RestTimerPlugin extends Plugin {
     r.put("endMs", p.getLong("end", 0L));
     r.put("totalMs", p.getLong("total", 0L));
     call.resolve(r);
+  }
+
+  // alert behaviour and the workout-notification switch, sent by the app at start-up and whenever they change
+  @PluginMethod
+  public void setSettings(PluginCall call) {
+    String mode = call.getString("mode", "sound");
+    Boolean workout = call.getBoolean("workout", true);
+    RestTimerCore.setSettings(getContext(), mode == null ? "sound" : mode, workout == null || workout);
+    call.resolve();
+  }
+
+  @PluginMethod
+  public void workoutUpdate(PluginCall call) {
+    JSObject d = call.getData();
+    RestTimerCore.showWorkout(
+        getContext(),
+        d.optLong("startMs", System.currentTimeMillis()),
+        d.optInt("done", 0),
+        d.optInt("total", 0),
+        d.optString("title", "Workout"));
+    call.resolve();
+  }
+
+  @PluginMethod
+  public void workoutEnd(PluginCall call) {
+    RestTimerCore.endWorkout(getContext());
+    call.resolve();
   }
 
   @PluginMethod
@@ -82,6 +110,8 @@ public class RestTimerPlugin extends Plugin {
     r.put("channelImportance", importance);
     r.put("liveShown", live);
     r.put("postedCount", posted);
+    r.put("service", RestTimerCore.prefs(c).getBoolean("svc", false));
+    r.put("mode", RestTimerCore.mode(c));
     call.resolve(r);
   }
 }

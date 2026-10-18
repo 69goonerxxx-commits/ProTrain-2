@@ -524,6 +524,14 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;disp
 .extmr-float .rt-countdown{color:var(--legs)}
 .rt-countdown{font-family:'Barlow Condensed',sans-serif;font-size:36px;font-weight:800;color:var(--accent);min-width:64px;line-height:1}
 .rt-label{font-size:12px;color:var(--muted);flex:1;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px}
+.rt-adj{padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text);font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:.5px;cursor:pointer}
+.rest-pill{position:fixed;left:12px;right:12px;bottom:calc(64px + env(safe-area-inset-bottom,0px) + 10px);z-index:99;display:none;align-items:center;gap:12px;padding:10px 14px 12px;background:var(--surface);border:1px solid var(--accent,#fbbf24);border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.45);overflow:hidden;cursor:pointer}
+.rest-pill.show{display:flex}
+.rest-pill .rp-time{font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:800;color:var(--accent,#fbbf24);min-width:56px}
+.rest-pill .rp-txt{flex:1;min-width:0;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rest-pill .rp-go{font-size:12px;color:var(--muted);white-space:nowrap}
+.rest-pill .rt-line{bottom:0;background:var(--accent,#fbbf24)}
+.repeat-btn{display:block;width:calc(100% - 40px);margin:6px 20px 0;padding:9px 12px;border-radius:10px;border:1px dashed var(--border);background:transparent;color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:1px;cursor:pointer}
 .rt-stop{padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;cursor:pointer}
 .rest-btn{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s;line-height:1}
 .rest-btn.active{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
@@ -733,6 +741,7 @@ select.pe-in{width:auto;max-width:140px}
   </div>
 </div>
 
+<div class="rest-pill" id="restPill" onclick="resumeRestSession()"></div>
 <nav class="bnav" aria-label="Main">
   <button class="nbtn active" onclick="go('today',this)"><span>&#9728;&#65039;</span>Today</button>
   <button class="nbtn" onclick="go('week',this)"><span>&#128197;</span>Week</button>
@@ -2308,13 +2317,14 @@ function getPlateaus(){
     Object.entries(data.logs).sort().forEach(function(e){
       var src=isMorn?e[1].morning:e[1].ppl;
       if(!src||!src.exercises||!src.exercises[ex.id])return;
-      var maxW=0;
-      workSets(src.exercises[ex.id].sets).forEach(function(s){if(s.weight)maxW=Math.max(maxW,+s.weight);});
-      if(maxW>0)sessions.push(maxW);
+      var maxW=0,topR=0;
+      workSets(src.exercises[ex.id].sets).forEach(function(s){if(s.weight){var w=+s.weight,r=+s.reps||0;if(w>maxW){maxW=w;topR=r;}else if(w===maxW)topR=Math.max(topR,r);}});
+      if(maxW>0)sessions.push({w:maxW,r:topR});
     });
     if(sessions.length>=3){
       var last3=sessions.slice(-3);
-      if(last3[0]===last3[1]&&last3[1]===last3[2])results.push({name:ex.name,weight:last3[0],sessions:sessions.length});
+      // stalled = same top weight 3 sessions running AND no extra reps (adding reps is still progress)
+      if(last3[0].w===last3[1].w&&last3[1].w===last3[2].w&&last3[2].r<=last3[0].r)results.push({name:ex.name,weight:last3[0].w,reps:last3[2].r,sessions:sessions.length});
     }
   });
   return results;
@@ -2606,6 +2616,16 @@ function recentAvgRpe(days){
   }
   return n>=12?sum/n:0;
 }
+function rpeWindowAvg(off,days,minN){
+  var t=now(),n=0,sum=0,logs=load().logs;
+  for(var i=off;i<off+days;i++){
+    var d=new Date(t);d.setDate(t.getDate()-i);
+    var src=logs[toKey(d)]&&logs[toKey(d)].ppl;
+    if(!src||!src.exercises)continue;
+    Object.keys(src.exercises).forEach(function(id){hardSets((src.exercises[id]||{}).sets).forEach(function(s){if(s.done&&+s.rpe>0){n++;sum+=+s.rpe;}});});
+  }
+  return n>=minN?sum/n:0;
+}
 function deloadSuggestion(){
   if(isPlanPaused()||isDeloadWeek())return null;
   var mk=toKey(getMondayOf(now()));
@@ -2614,7 +2634,8 @@ function deloadSuggestion(){
   var pi=getCycleWeekInfo(prev);if(pi&&pi.type==='deload')return null;
   var stalls=getPlateaus().length,rpe=recentAvgRpe(14);
   var sig=checkinSignals(),fatigue=sig.n>=3&&(sig.highSore>=2||sig.joint>=2);
-  return((stalls>=3&&rpe>=8.5)||fatigue)?{stalls:stalls,rpe:Math.round(rpe*10)/10,mk:mk,fatigue:fatigue}:null;
+  var prevRpe=rpeWindowAvg(14,14,8),rising=rpe>=8&&prevRpe>0&&rpe-prevRpe>=0.6;
+  return((stalls>=3&&rpe>=8.5)||fatigue||(rising&&stalls>=1))?{stalls:stalls,rpe:Math.round(rpe*10)/10,mk:mk,fatigue:fatigue,rising:rising,prevRpe:Math.round(prevRpe*10)/10}:null;
 }
 function acceptDeload(mk){localStorage.setItem('pt_deload_override',mk);refreshScreens();showToast('This week is now a deload','var(--success)');}
 function dismissDeload(mk){localStorage.setItem('pt_deload_dismissed',mk);refreshScreens();}
@@ -2629,7 +2650,7 @@ function planBanners(){
     if(gap>=10)h+='<div class="plan-banner"><div class="pb-title">Welcome back</div><div class="pb-sub">Your last workout was '+gap+' days ago. How do you want to continue?</div><div class="pb-actions"><button onclick="pickUpPlan()">Pick up where I left off</button><button onclick="easeBackIn()">Ease back in</button><button class="pb-quiet" onclick="dismissWelcome()">Dismiss</button></div></div>';
   }
   var ds=deloadSuggestion();
-  if(ds)h+='<div class="plan-banner"><div class="pb-title">Consider a deload week</div><div class="pb-sub">'+(ds.fatigue?'Your recent check-ins show high soreness or joint niggles. A lighter week now can help you recover and come back stronger.':ds.stalls+' lifts have stalled and your recent effort averages RPE '+ds.rpe+'. A lighter week now may help you push past it.')+'</div><div class="pb-actions"><button onclick="acceptDeload(\''+ds.mk+'\')">Make this week a deload</button><button class="pb-quiet" onclick="dismissDeload(\''+ds.mk+'\')">Not now</button></div></div>';
+  if(ds)h+='<div class="plan-banner"><div class="pb-title">Consider a deload week</div><div class="pb-sub">'+(ds.fatigue?'Your recent check-ins show high soreness or joint niggles. A lighter week now can help you recover and come back stronger.':ds.rising?'Your effort has crept up from RPE '+ds.prevRpe+' to '+ds.rpe+' over the last two weeks while '+ds.stalls+' lift'+(ds.stalls>1?'s have':' has')+' stalled. A lighter week now may help you push past it.':ds.stalls+' lifts have stalled and your recent effort averages RPE '+ds.rpe+'. A lighter week now may help you push past it.')+'</div><div class="pb-actions"><button onclick="acceptDeload(\''+ds.mk+'\')">Make this week a deload</button><button class="pb-quiet" onclick="dismissDeload(\''+ds.mk+'\')">Not now</button></div></div>';
   return h;
 }
 
@@ -2883,7 +2904,55 @@ function driveLine(id,end,totalSecs,on){
   ln.classList.toggle('low',msLeft<=10000);
 }
 var restTotalSecs=0;
+function restAlertMode(){var m=localStorage.getItem('pt_alert');return(m==='vibrate'||m==='silent'||m==='off')?m:'sound';}
+// ── Mini timer pill: keeps a running rest visible after you close the log sheet ──
+var restCtx=null,restMetaCur=null,restDoneUntil=0,restDoneTimer=null;
+function modalIsOpen(){var o=document.getElementById('overlay');return !!(o&&o.classList.contains('open'));}
+function updateRestPill(){
+  var pill=document.getElementById('restPill');if(!pill)return;
+  var running=restInterval&&restRemaining>0&&restCtx;
+  var done=!running&&restCtx&&restDoneUntil>Date.now();
+  if(modalIsOpen()||(!running&&!done)){
+    if(pill.classList.contains('show')){pill.classList.remove('show');driveLine('pillLine',0,1,false);}
+    return;
+  }
+  var col='';try{col=(restCtx.day&&PPL[restCtx.day])?PPL[restCtx.day].color:'';}catch(e){}
+  if(col)pill.style.setProperty('--accent',col);
+  var nm=(restMetaCur&&restMetaCur.title)?restMetaCur.title:'Rest';
+  if(!pill.classList.contains('show')||pill.getAttribute('data-mode')!==(running?'run':'done')){
+    pill.setAttribute('data-mode',running?'run':'done');
+    pill.innerHTML='<div class="rp-time" id="rpTime"></div><div class="rp-txt" id="rpTxt"></div><div class="rp-go">Back to workout &rsaquo;</div><div class="rt-line" id="pillLine"></div>';
+    pill.classList.add('show');
+  }
+  var t=document.getElementById('rpTime'),x=document.getElementById('rpTxt');
+  if(running){
+    if(t)t.textContent=fmtRestTime(restRemaining);
+    if(x)x.textContent=nm;
+    driveLine('pillLine',restEndTimestamp,restTotalSecs||restRemaining,true);
+  }else{
+    if(t)t.textContent='0:00';
+    if(x)x.textContent='Rest over. Tap to log your next set';
+    driveLine('pillLine',0,1,false);
+    var l=document.getElementById('pillLine');if(l){l.style.transform='scaleX(0)';}
+  }
+}
+function resumeRestSession(){
+  if(!restCtx)return;
+  var c=restCtx;restDoneUntil=0;
+  openModal(c.type,c.key,c.day);
+}
+// +30 s / -30 s on a running rest (also updates the notification)
+function adjRest(d){
+  if(!restInterval)return;
+  var left=restEndTimestamp-Date.now()+d*1000;
+  if(left<1000)left=1000;
+  restEndTimestamp=Date.now()+left;
+  restTotalSecs=Math.max(1,restTotalSecs+d,Math.ceil(left/1000));
+  tickRest();
+  try{if(restAlertMode()!=='off')scheduleRestNotification(restEndTimestamp,restMetaCur||restNotifyMeta(restExId,restSetIdx));}catch(e){}
+}
 function updateRestDisplay(){
+  updateRestPill();
   var el=document.getElementById('restTimerFloat');
   if(!el)return;
   if(restRemaining>0&&restInterval){
@@ -2906,12 +2975,18 @@ function tickRest(){
   updateRestDisplay();
   if(restRemaining<=0){
     clearInterval(restInterval);restInterval=null;
-    playBeep();
-    if(navigator.vibrate)navigator.vibrate([400,100,400,100,400]);
+    var _am=restAlertMode();
+    if(_am==='sound')playBeep();
+    if((_am==='sound'||_am==='vibrate')&&navigator.vibrate)navigator.vibrate([400,100,400,100,400]);
     var btn=restExId!=null&&restSetIdx!=null?document.getElementById('restbtn_'+restExId+'_'+restSetIdx):null;
     if(btn){btn.classList.remove('active');btn.innerHTML='&#9203;';}
     var old=restExId;var oldsi=restSetIdx;
     restExId=null;restSetIdx=null;
+    if(restCtx&&!modalIsOpen()){
+      restDoneUntil=Date.now()+20000;
+      if(restDoneTimer)clearTimeout(restDoneTimer);
+      restDoneTimer=setTimeout(updateRestPill,20500);
+    }
     setTimeout(function(){
       var b2=document.getElementById('restbtn_'+old+'_'+oldsi);
       if(b2)b2.innerHTML='&#9203;';
@@ -2920,6 +2995,31 @@ function tickRest(){
   }
 }
 // what the out-of-app notification says (exercise, which set just finished, when the next one is due)
+function nextSetText(exId,setIdx){
+  try{
+    var st=mState[exId]&&mState[exId].sets;if(!st)return '';
+    var cur=st[setIdx],nx=st[setIdx+1],id=exId,label='';
+    if(!nx){
+      var keys=Object.keys(mState),i=keys.indexOf(exId),nid=i>=0?keys[i+1]:null;
+      if(!nid||!mState[nid]||!mState[nid].sets||!mState[nid].sets.length)return '';
+      var ni=resolveExById(nid);label=(ni&&ni.name)||'';nx=mState[nid].sets[0];id=nid;cur=null;
+    }
+    var info=resolveExById(id),baseId=info&&info.isAlt?info.baseId:id;
+    var base=ALL_EX.find(function(e){return e.id===baseId;});
+    var txt='';
+    if('time' in nx){
+      txt=(nx.time!==''&&nx.time!=null&&+nx.time>0)?nx.time+' sec':'';
+    }else{
+      var w=(nx.weight!==''&&nx.weight!=null&&+nx.weight>0)?+nx.weight:((cur&&cur.weight!==''&&cur.weight!=null&&+cur.weight>0)?+cur.weight:0);
+      var r=(nx.reps!==''&&nx.reps!=null&&+nx.reps>0)?String(nx.reps):'';
+      if(!r&&base&&base.target){var rr=repRange(base.target);r=rr.lo===rr.hi?String(rr.lo):rr.lo+'-'+rr.hi;}
+      txt=r?r+' reps':'';
+      if(txt&&w)txt+=' at '+w+' '+wUnit();
+    }
+    if(!txt)return label?'Next: '+label:'';
+    return 'Next: '+(label?label+', ':'')+txt;
+  }catch(e){return '';}
+}
 function restNotifyMeta(exId,setIdx){
   var nm='',n=0,k=setIdx+1;
   try{var info=resolveExById(exId);nm=(info&&info.name)||'';n=(mState[exId]&&mState[exId].sets.length)||0;}catch(e){}
@@ -2928,6 +3028,7 @@ function restNotifyMeta(exId,setIdx){
     title:'Rest'+(nm?' \u00b7 '+nm:''),
     prefix:last?'Last set done':(n>0?'Set '+k+' of '+n+' done':'Set '+k+' done'),
     nextLabel:last?'Next up at':'Next set at',
+    nextTarget:nextSetText(exId,setIdx),
     doneTitle:'Rest complete',
     doneText:last?'Ready for the next exercise.':(nm&&n>0?nm+', set '+(k+1)+' of '+n+'. Go.':'Time for your next set.')
   };
@@ -2941,8 +3042,10 @@ function startRestTimer(exId,setIdx,secs){
   }
   restExId=exId;restSetIdx=setIdx;restRemaining=secs;restTotalSecs=secs;
   restEndTimestamp=Date.now()+secs*1000;
-  if(navigator.vibrate)navigator.vibrate(200);
-  scheduleRestNotification(restEndTimestamp,restNotifyMeta(exId,setIdx));
+  restCtx={type:mType,key:mKey,day:mDay};restDoneUntil=0;restMetaCur=restNotifyMeta(exId,setIdx);
+  var _am0=restAlertMode();
+  if((_am0==='sound'||_am0==='vibrate')&&navigator.vibrate)navigator.vibrate(200);
+  if(_am0!=='off')scheduleRestNotification(restEndTimestamp,restMetaCur);else cancelRestNotification();
   var btn=document.getElementById('restbtn_'+exId+'_'+setIdx);
   if(btn)btn.classList.add('active');
   updateRestDisplay();
@@ -2956,7 +3059,7 @@ function stopRestTimer(){
     var btn=document.getElementById('restbtn_'+restExId+'_'+restSetIdx);
     if(btn){btn.classList.remove('active');btn.innerHTML='&#9203;';}
   }
-  restExId=null;restSetIdx=null;restRemaining=0;
+  restExId=null;restSetIdx=null;restRemaining=0;restCtx=null;restDoneUntil=0;
   updateRestDisplay();
 }
 function togRestBtn(exId,setIdx,secs){
@@ -3096,12 +3199,13 @@ function scheduleRestNotification(endTimestamp,meta){
   meta=meta||{};
   var at=new Date(endTimestamp).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
   // shown for the whole rest (no ticking on the web, so it states when the rest ends)
-  webNotify(meta.title||'Rest',{body:(meta.prefix?meta.prefix+'. ':'')+(meta.nextLabel||'Next set at')+' '+at,tag:'pt-rest',silent:true,requireInteraction:true});
+  webNotify(meta.title||'Rest',{body:(meta.prefix?meta.prefix+'. ':'')+(meta.nextTarget?meta.nextTarget+'. ':'')+(meta.nextLabel||'Next set at')+' '+at,tag:'pt-rest',silent:true,requireInteraction:true});
   // replaces it when the rest ends (only fires while the page is still running)
   restNotifTimeout=setTimeout(function(){
     restNotifTimeout=null;
     var hidden=document.visibilityState==='hidden';
-    webNotify('Rest complete',{body:meta.doneText||'Time for your next set.',tag:'pt-rest',renotify:true,silent:!hidden,vibrate:[300,100,300,100,300]});
+    var _wm=restAlertMode();
+    webNotify('Rest complete',{body:meta.doneText||'Time for your next set.',tag:'pt-rest',renotify:true,silent:!hidden||_wm!=='sound',vibrate:(_wm==='sound'||_wm==='vibrate')?[300,100,300,100,300]:[]});
   },delay);
 }
 function cancelRestNotification(){
@@ -3206,7 +3310,8 @@ var currentSubEx=null;
 var calDate=new Date();
 var selWDay=null;
 var mType=null,mKey=null,mState={},mNotes='',mDraftNotes='';
-setInterval(function(){try{if(mType&&mKey&&document.getElementById('overlay').classList.contains('open'))localStorage.setItem('pt_draft',JSON.stringify({key:mKey,type:mType,state:mState,notes:mNotes,t:Date.now()}));}catch(e){}},3000);
+function writeDraft(){try{if(mType&&mKey&&document.getElementById('overlay').classList.contains('open'))localStorage.setItem('pt_draft',JSON.stringify({key:mKey,type:mType,state:mState,notes:mNotes,t:Date.now()}));}catch(e){}}
+setInterval(writeDraft,3000);
 var guideDay='morning',guideSec='exercises';
 var openCards={};
 // Rest timer
@@ -3523,6 +3628,75 @@ function changeWeekOffset(dir){
 
 // ── BODY METRICS ──────────────────────────────────────────────
 function loadBody(key){var d=load();return(d.logs[key]&&d.logs[key].body)||null;}
+var BODY_M=[['waist','Waist'],['chest','Chest'],['hips','Hips'],['arm','Arm'],['thigh','Thigh']];
+var _btMetric='weight',_btRange=90;
+function bodyHasM(b){return !!(b&&b.m&&Object.keys(b.m).length);}
+function bodyMInputs(m){
+  var h='';
+  [BODY_M.slice(0,3),BODY_M.slice(3)].forEach(function(row){
+    h+='<div class="body-metric-row">';
+    row.forEach(function(k){h+='<div class="body-metric-group"><div class="body-metric-lbl">'+k[1]+'</div><input class="body-metric-inp" id="bsM_'+k[0]+'" type="number" inputmode="decimal" placeholder="cm" value="'+(m[k[0]]||'')+'"></div>';});
+    h+='</div>';
+  });
+  return h;
+}
+function bodySeries(metric){
+  var out=[];
+  Object.entries(load().logs).sort().forEach(function(e){
+    var b=e[1].body;if(!b)return;
+    var v=metric==='weight'?+b.weight:(b.m?+b.m[metric]:0);
+    if(v>0)out.push({date:e[0],t:new Date(e[0]+'T00:00:00').getTime(),v:v});
+  });
+  return out;
+}
+function bodySmooth(arr){
+  return arr.map(function(p,i){
+    var s=0,n=0;
+    for(var j=i;j>=0;j--){if(Math.round((p.t-arr[j].t)/86400000)>6)break;s+=arr[j].v;n++;}
+    return s/n;
+  });
+}
+function setBodyTrend(m,r){
+  if(m)_btMetric=m;
+  if(r!=null)_btRange=r;
+  var el=document.getElementById('bodyTrendBox');if(el)el.innerHTML=bodyTrendHTML();
+}
+function bodyTrendHTML(){
+  var unit=_btMetric==='weight'?wUnit():'cm';
+  var chip=function(on,label,act){return '<button onclick="'+act+'" style="padding:5px 10px;border-radius:14px;border:1px solid '+(on?'#fbbf24':'var(--border)')+';background:'+(on?'color-mix(in srgb,#fbbf24 18%,transparent)':'transparent')+';color:'+(on?'#fbbf24':'var(--muted)')+';font-size:12px;font-family:inherit">'+label+'</button>';};
+  var h='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">';
+  var mets=[['weight','Weight']].concat(BODY_M.filter(function(k){return k[0]===_btMetric||bodySeries(k[0]).length;}));
+  mets.forEach(function(k){h+=chip(k[0]===_btMetric,k[1],"setBodyTrend('"+k[0]+"')");});
+  h+='</div><div style="display:flex;gap:6px;margin-bottom:10px">';
+  [[30,'30d'],[90,'90d'],[0,'All']].forEach(function(r){h+=chip(r[0]===_btRange,r[1],'setBodyTrend(null,'+r[0]+')');});
+  h+='<button onclick="openBodySheet(toKey(now()))" style="margin-left:auto;padding:5px 10px;border-radius:14px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:12px;font-family:inherit">+ Log today</button></div>';
+  var full=bodySeries(_btMetric),sm=bodySmooth(full),pts=[];
+  var cut=_btRange>0?now().getTime()-_btRange*86400000:0;
+  full.forEach(function(p,i){if(p.t>=cut)pts.push({date:p.date,t:p.t,v:p.v,a:sm[i]});});
+  if(pts.length<2){
+    return h+'<div class="no-data">Log '+(_btMetric==='weight'?'body weight':'this measurement')+' on 2+ days'+(_btRange>0?' in this range':'')+' to see your trend. Tap + Log today, or a day in the Calendar.</div>';
+  }
+  var first=pts[0],last=pts[pts.length-1];
+  var diff=Math.round((last.a-first.a)*10)/10;
+  var days=Math.max(1,Math.round((last.t-first.t)/86400000));
+  var wk=days>=14?Math.round(diff/days*7*100)/100:null;
+  h+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">';
+  h+='<div><div style="font-family:\'Barlow Condensed\',sans-serif;font-size:28px;font-weight:800;color:var(--text)">'+(Math.round(last.a*10)/10)+'<span style="font-size:14px;font-weight:400;color:var(--muted)"> '+unit+'</span></div>';
+  h+='<div style="font-size:11px;color:var(--muted)">7-day average · latest entry '+last.v+'</div></div>';
+  h+='<div style="text-align:right"><div style="font-size:13px;font-weight:700;color:var(--text)">'+(diff>0?'+':'')+diff+' '+unit+'</div>';
+  h+='<div style="font-size:11px;color:var(--muted)">'+(wk!==null?(wk>0?'+':'')+wk+' '+unit+'/week · ':'')+pts.length+' entries</div></div></div>';
+  var W=280,H=70,pad=6,minV=Math.min.apply(null,pts.map(function(p){return Math.min(p.v,p.a);})),maxV=Math.max.apply(null,pts.map(function(p){return Math.max(p.v,p.a);})),rg=(maxV-minV)||1,span=(last.t-first.t)||1;
+  var X=function(p){return Math.round((pad+(p.t-first.t)/span*(W-pad*2))*10)/10;};
+  var Y=function(v){return Math.round((H-pad-((v-minV)/rg)*(H-pad*2))*10)/10;};
+  h+='<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="'+H+'" style="overflow:visible;display:block">';
+  h+='<line x1="0" y1="'+(H-pad)+'" x2="'+W+'" y2="'+(H-pad)+'" stroke="var(--border)" stroke-width="1"/>';
+  pts.forEach(function(p){h+='<circle cx="'+X(p)+'" cy="'+Y(p.v)+'" r="2.2" fill="var(--muted)" opacity=".55"/>';});
+  h+='<path d="M '+pts.map(function(p){return X(p)+' '+Y(p.a);}).join(' L ')+'" fill="none" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>';
+  h+='<circle cx="'+X(last)+'" cy="'+Y(last.a)+'" r="4" fill="#fbbf24"/></svg>';
+  var fmt=function(k){return k.slice(5).replace('-','/');};
+  h+='<div style="display:flex;justify-content:space-between;margin-top:4px;font-size:11px;color:var(--muted)"><span>'+fmt(first.date)+'</span><span>dots = entries, line = 7-day average</span><span>'+fmt(last.date)+'</span></div>';
+  return h;
+}
 function saveBody(key,obj){
   var d=load();
   if(!d.logs[key])d.logs[key]={};
@@ -3547,7 +3721,7 @@ function tapCalDay(key){
   var data=load();
   var log=data.logs[key];
   var hasLog=log&&(log.morning||log.ppl);
-  var hasBody=!!(log&&log.body&&(log.body.weight||log.body.height));
+  var hasBody=!!(log&&log.body&&(log.body.weight||log.body.height||bodyHasM(log.body)));
   var label=date.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
   var sheet=document.createElement('div');
   sheet.id='calActionSheet';
@@ -3602,6 +3776,8 @@ function openBodySheet(key){
     +'<input class="body-metric-inp" id="bsHeight" type="number" inputmode="decimal" placeholder="e.g. 170" value="'+h+'" oninput="updBodyBMI()"></div>'
     +'</div>'
     +'<div class="body-bmi-result" id="bsBMIResult">'+(bmi?'BMI '+bmi+' — '+bmiLabel(bmi):'')+'</div>'
+    +'<div class="body-metric-lbl" style="margin:4px 0 6px">Measurements (cm, optional)</div>'
+    +bodyMInputs(existing.m||{})
     +'<textarea class="body-note-area" id="bsNote" maxlength="500" placeholder="Any notes... (optional)" oninput="this.value=this.value.slice(0,500);this.nextElementSibling.textContent=this.value.length+\'/500\'">'+esc(note)+'</textarea>'
     +'<div class="body-note-count">'+(note?note.length:0)+'/500</div>'
     +'</div>'
@@ -3634,11 +3810,13 @@ function saveBodySheet(key){
   var bmi=calcBMI(w,h);
   var note=noteEl?noteEl.value.slice(0,500):'';
   var obj={};
+  var m={};BODY_M.forEach(function(k){var el=document.getElementById('bsM_'+k[0]);var v=el?parseFloat(el.value):0;if(v>0&&v<400)m[k[0]]=v;});
+  if(Object.keys(m).length)obj.m=m;
   if(w)obj.weight=w;
   if(h)obj.height=h;
   if(bmi)obj.bmi=bmi;
   if(note)obj.note=note;
-  if(!Object.keys(obj).length){showToast('Nothing to save — enter at least weight or height','var(--muted)');return;}
+  if(!Object.keys(obj).length){showToast('Nothing to save — enter a weight, height or measurement','var(--muted)');return;}
   saveBody(key,obj);
   var wrap=document.getElementById('bodySheet');if(wrap)wrap.remove();
   rCal();
@@ -3676,7 +3854,7 @@ function rCal(){
       else if(st==='rest-miss'){cls='rest-miss';dotC='var(--muted)';}
       else if(st==='missed'){cls='missed';dotC='var(--danger)';}
     }
-    var hasBody=!!(calLogs[key]&&calLogs[key].body&&(calLogs[key].body.weight||calLogs[key].body.height));
+    var hasBody=!!(calLogs[key]&&calLogs[key].body&&(calLogs[key].body.weight||calLogs[key].body.height||bodyHasM(calLogs[key].body)));
     h+='<div class="cday '+cls+(isT?' today':'')+'" onclick="tapCalDay(\''+key+'\')">';
     h+='<div class="cday-num">'+d+'</div>';
     h+='<div class="cday-dot" style="background:'+dotC+'"></div>';
@@ -3718,6 +3896,14 @@ function toggleChangelog(){changelogOpen=!changelogOpen;rProg();}
 function renderChangelog(){
   var entries=[
     {ver:'v8.2.1',items:[
+      'Rest notification: the bar under the countdown now shrinks as your rest runs down (Android app)',
+      'Rest notification and alert now show what is next, for example "Next: 12 reps at 40 kg"',
+      'New workout notification: while a workout is open it shows your session time and sets done (Android app, can be switched off in Settings)',
+      'Settings: choose what happens when a rest ends: sound, vibrate only, silent or off (also applies to the in-app beep)',
+      'Workout reminders (Android app): pick a time, plus an optional evening nudge that only appears if you have not trained yet',
+      'Body trend: log waist, chest, hips, arm and thigh (cm) along with weight, and see them on the Progress tab with a smoothed 7-day average line, 30d / 90d / All ranges and the weekly rate of change',
+      'Plateau detector: a lift only counts as stalled if the weight stays the same for 3 sessions and the reps do not go up either',
+      'Deload suggestion now also appears when your effort (RPE) has crept up over the last two weeks while a lift is stalling',
       'Missed workouts no longer show days before your program start date',
       'Removed the yellow box around the selected tab and buttons',
       'The Guide can now log a workout: pick a date, tap Log, and it saves to that day like a normal session',
@@ -3725,7 +3911,11 @@ function renderChangelog(){
       'The rest timer now stays pinned at the top of the log sheet while you scroll',
       'The line under the rest and hold timers shrinks as time runs out and turns red for the last 10 seconds',
       'Rest timer notification: during every rest, in the app or out of it, a live countdown shows in your notifications with the exercise, the time your next set is due, and +30 s and Skip rest buttons. A louder alert pops up when rest ends. (Android app only. The web version shows a notification with the exercise and when your next set is due, then Rest complete at the end)',
-      'Added a short note explaining the W, D and F set tags (tap the circle next to a set to cycle them)'
+      'Added a short note explaining the W, D and F set tags (tap the circle next to a set to cycle them)',
+      'Closing the log sheet during a rest no longer stops the timer: a mini timer pill stays on screen and takes you back to the workout. When the rest ends it says so for 20 seconds',
+      '+30 and -30 buttons on the in-app rest timer (the notification follows)',
+      'Repeat last set: one tap copies the last filled set into the next empty one',
+      'Your last entries are now kept when you close the log sheet, even within 3 seconds of typing'
     ]},
     {ver:'v8.2',items:[
       'ProTrain is now an Android app: it installs like any other app, has its own icon and works offline',
@@ -4033,73 +4223,9 @@ function rProg(){
 
 
 
-  // ── Weight Trend Chart
-  h+='<div class="sec-title">Body Weight Trend</div>';
-  h+='<div class="anl-card" style="padding:14px 14px 10px">';
-  (function(){
-    var data=load();
-    var entries=[];
-    Object.entries(data.logs).sort().forEach(function(e){
-      var b=e[1].body;
-      if(b&&b.weight&&+b.weight>0)entries.push({date:e[0],w:+b.weight});
-    });
-    entries=entries.slice(-30);
-    if(entries.length<2){
-      h+='<div class="no-data">Log body weight on 2+ days to see your trend.</div>';
-    } else {
-      var minW=entries.reduce(function(a,b){return a.w<b.w?a:b;}).w;
-      var maxW=entries.reduce(function(a,b){return a.w>b.w?a:b;}).w;
-      var range=maxW-minW||1;
-      var first=entries[0].w, last=entries[entries.length-1].w;
-      var diff=Math.round((last-first)*10)/10;
-      var diffCol=diff<0?'var(--success)':diff>0?'var(--danger)':'var(--muted)';
-      var diffStr=(diff>0?'+':'')+diff+' '+wUnit()+' since start';
-      h+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">';
-      h+='<div><div style="font-family:\'Barlow Condensed\',sans-serif;font-size:28px;font-weight:800;color:var(--text)">'+last+'<span style="font-size:14px;font-weight:400;color:var(--muted)"> '+wUnit()+'</span></div>';
-      h+='<div style="font-size:11px;color:var(--muted)">Latest entry</div></div>';
-      h+='<div style="text-align:right"><div style="font-size:13px;font-weight:700;color:'+diffCol+'">'+diffStr+'</div>';
-      h+='<div style="font-size:11px;color:var(--muted)">'+entries.length+' entries logged</div></div>';
-      h+='</div>';
-      // SVG sparkline
-      var W=280,H=60,pad=4;
-      h+='<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="'+H+'" style="overflow:visible;display:block">';
-      // grid lines
-      h+='<line x1="0" y1="'+(H-pad)+'" x2="'+W+'" y2="'+(H-pad)+'" stroke="var(--border)" stroke-width="1"/>';
-      h+='<line x1="0" y1="'+pad+'" x2="'+W+'" y2="'+pad+'" stroke="var(--border)" stroke-width="1" stroke-dasharray="4,4"/>';
-      // build points
-      var pts=entries.map(function(e,i){
-        var x=pad+i/(entries.length-1)*(W-pad*2);
-        var y=H-pad-((e.w-minW)/range)*(H-pad*2);
-        return{x:Math.round(x*10)/10,y:Math.round(y*10)/10,w:e.w,date:e.date};
-      });
-      // gradient fill
-      var polyPts=pts.map(function(p){return p.x+','+p.y;}).join(' ');
-      var fillPts=pts[0].x+','+(H-pad)+' '+polyPts+' '+pts[pts.length-1].x+','+(H-pad);
-      h+='<defs><linearGradient id="wtGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#fbbf24" stop-opacity="0.25"/><stop offset="100%" stop-color="#fbbf24" stop-opacity="0"/></linearGradient></defs>';
-      h+='<polygon points="'+fillPts+'" fill="url(#wtGrad)"/>';
-      // line
-      var linePath='M '+pts.map(function(p){return p.x+' '+p.y;}).join(' L ');
-      h+='<path d="'+linePath+'" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>';
-      // dots for first, last, min, max
-      var special=[0,pts.length-1];
-      var minIdx=pts.reduce(function(a,b,i){return pts[i].y>pts[a].y?i:a;},0);
-      var maxIdx=pts.reduce(function(a,b,i){return pts[i].y<pts[a].y?i:a;},0);
-      [minIdx,maxIdx].forEach(function(i){if(special.indexOf(i)<0)special.push(i);});
-      pts.forEach(function(p,i){
-        var isSpec=special.indexOf(i)>=0;
-        h+='<circle cx="'+p.x+'" cy="'+p.y+'" r="'+(isSpec?4:2)+'" fill="'+(isSpec?'#fbbf24':'var(--surface)')+'" stroke="#fbbf24" stroke-width="'+(isSpec?0:1.5)+'"/>';
-      });
-      // labels for first/last
-      h+='<text x="'+pts[0].x+'" y="'+(pts[0].y-8)+'" fill="var(--muted)" font-size="9" text-anchor="middle">'+pts[0].w+'</text>';
-      h+='<text x="'+pts[pts.length-1].x+'" y="'+(pts[pts.length-1].y-8)+'" fill="#fbbf24" font-size="9" text-anchor="middle">'+pts[pts.length-1].w+'</text>';
-      h+='</svg>';
-      // date range
-      var fmt=function(k){return k.slice(5).replace('-','/');};
-      h+='<div style="display:flex;justify-content:space-between;margin-top:4px;font-size:11px;color:var(--muted)">';
-      h+='<span>'+fmt(entries[0].date)+'</span><span>'+fmt(entries[entries.length-1].date)+'</span></div>';
-    }
-  })();
-  h+='</div>';
+  // ── Body Trend (weight + measurements)
+  h+='<div class="sec-title">Body Trend</div>';
+  h+='<div class="anl-card" id="bodyTrendBox" style="padding:14px 14px 10px">'+bodyTrendHTML()+'</div>';
 
   // ── PR Board
   h+='<div class="sec-title">Personal Records 🏆</div>';
@@ -4185,7 +4311,7 @@ function rProg(){
   if(plateaus.length){
     plateaus.forEach(function(p){
       h+='<div class="plateau-item"><span>'+p.name+'</span>';
-      h+='<span class="plateau-badge">'+p.weight+wUnit()+' × '+p.sessions+' sessions</span></div>';
+      h+='<span class="plateau-badge">'+p.weight+wUnit()+(p.reps?' × '+p.reps+' reps':'')+' · no gain in 3 sessions</span></div>';
     });
   } else {
     h+='<div class="no-data">No plateaus detected in your last 3 sessions per exercise. Keep pushing!</div>';
@@ -4675,6 +4801,7 @@ function resetGuideChecks(){
 var mExList=[],mPairs={},mPairsRev={},mMadeUpFor=null;
 var mDay=null; // the training day being logged (differs from the schedule when logging on a rest day)
 function openModal(type,key,dayOverride){
+  if(restInterval&&restCtx&&(restCtx.type!==type||restCtx.key!==key))stopRestTimer();
   try{applyAutoVolume();}catch(e){}
   mType=type;mKey=key;
   var date=new Date(key+'T00:00:00');
@@ -4757,6 +4884,7 @@ function openModal(type,key,dayOverride){
   mCooldownOpen=mCooldown.some(function(x){return x;});
   buildModal(exList,type);
   document.getElementById('overlay').classList.add('open');
+  updateRestDisplay();
 }
 function buildModal(exList,type){
   var h='';
@@ -4767,6 +4895,7 @@ function buildModal(exList,type){
   h+='<div class="rest-timer-float" id="restTimerFloat">';
   h+='<div class="rt-countdown" id="rtCountdown">0s</div>';
   h+='<div class="rt-label">Rest<br><span style="font-size:11px;opacity:.6">Tap timer btn again to stop</span></div>';
+  h+='<button class="rt-adj" onclick="adjRest(-30)" aria-label="30 seconds less">-30</button><button class="rt-adj" onclick="adjRest(30)" aria-label="30 seconds more">+30</button>';
   h+='<button class="rt-stop" onclick="stopRestTimer()">Stop</button>';
   h+='<div class="rt-line" id="rtLine"></div></div>';
   h+='<div class="rest-timer-float extmr-float" id="exTimerFloat">';
@@ -4907,6 +5036,7 @@ function buildModal(exList,type){
         h+=renderBandSelector(activeId,si,_savedBands);
       }
     });
+    if(st.sets.length>1)h+='<button class="repeat-btn" onclick="repeatLastSet(\''+activeId+'\')">&#8635; Repeat last set</button>';
     if(SUBS[ex.id]){
       h+='<div class="sub-panel" id="submodal_'+ex.id+'">';
       h+='<div class="sub-panel-title">Swap this exercise</div>';
@@ -5089,7 +5219,7 @@ function saveSession(){
   save(data);
   localStorage.removeItem('pt_draft');
   var _ck=mKey,_ct=mType;
-  closeModal();
+  closeModal(true);
   maybeAutoBackup();
   if(_ct==='ppl')maybeCheckin(_ck);
   try{render(curScreen);}catch(re){console.warn('render error',re);}
@@ -5204,6 +5334,23 @@ function ssAdvance(id,si,nowDone){
   var row=document.getElementById('setchk_'+target+'_'+tgi);
   if(row&&row.scrollIntoView)row.scrollIntoView({block:'center',behavior:'smooth'});
   ['reps','weight','time'].some(function(f){var el=document.getElementById('inp_'+target+'_'+tgi+'_'+f);if(el&&el.focus){el.focus();return true;}return false;});
+}
+// copies the reps/weight/time of the last filled set into the next empty one
+function repeatLastSet(exId){
+  var st=mState[exId];if(!st)return;
+  function has(q){return !!((q.reps!==''&&q.reps!=null)||(q.weight!==''&&q.weight!=null&&+q.weight>0)||(q.time!==''&&q.time!=null));}
+  var src=-1;
+  for(var i=st.sets.length-1;i>=0;i--){if(st.sets[i].type!=='warmup'&&has(st.sets[i])){src=i;break;}}
+  if(src<0){showToast('Fill in a set first, then repeat it','var(--muted)');return;}
+  var dst=-1;
+  for(var j=src+1;j<st.sets.length;j++){if(st.sets[j].type!=='warmup'&&!has(st.sets[j])){dst=j;break;}}
+  if(dst<0){showToast('No empty set left to fill','var(--muted)');return;}
+  ['time','reps','weight'].forEach(function(f){
+    var v=st.sets[src][f];
+    if(v===undefined||v===''||v===null)return;
+    var el=document.getElementById('inp_'+exId+'_'+dst+'_'+f);
+    if(el){el.value=v;updSet(exId,dst,f,String(v));}
+  });
 }
 function fillRec(exId,mode){
   var exInfo=resolveExById(exId);
@@ -5323,12 +5470,15 @@ function setReason(key,reason){
   else data.logs[key].reason=reason;
   save(data);rWeek();
 }
-function closeModal(){
+function closeModal(finished){
+  if(finished!==true)finished=false;
+  if(!finished)writeDraft(); // last entries are kept even if you close within 3 seconds of typing
   releaseWakeLock();
   mMadeUpFor=null;_trim=null;
   document.getElementById('overlay').classList.remove('open');
   mType=null;mKey=null;mState={};mNotes='';mPrevNotes='';mStartHHMM='';mEndHHMM='';mStartConfirmed=false;
-  stopRestTimer();
+  if(finished||!restInterval)stopRestTimer(); // closing the sheet mid-rest keeps the timer going (shown as the mini pill)
+  else updateRestPill();
   mWarmup=[];mCooldown=[];mWarmupOpen=false;mCooldownOpen=false;
   // Don't clear swaps here - keep them for session
 }
@@ -5640,6 +5790,22 @@ function renderTrainingSettings(){
   h+='<div style="'+lbl+'">Training plan</div><div class="pb-actions" style="margin-top:6px"><button onclick="openPlanEditor()">Edit plan &amp; targets</button><button class="pb-quiet" onclick="openWeeklyReview()">Weekly review</button><button class="pb-quiet" onclick="toggleCheckin()">Check-in: '+(localStorage.getItem('pt_checkin_off')==='1'?'off':'on')+'</button></div>';
   h+='<div style="'+lbl+'">Automation</div><div class="pb-actions" style="margin-top:6px"><button class="'+(localStorage.getItem('pt_autorest')==='0'?'pb-quiet':'')+'" onclick="toggleAutoRest()">Auto rest timer: '+(localStorage.getItem('pt_autorest')==='0'?'off':'on')+'</button><button class="'+(localStorage.getItem('pt_autovol')==='0'?'pb-quiet':'')+'" onclick="toggleAutoVolume()">Auto volume: '+(localStorage.getItem('pt_autovol')==='0'?'off':'on')+'</button></div>';
   h+='<div class="walk-note">Auto volume adds a set to lagging muscles in later Build and Climb weeks when your recovery looks good.</div>';
+  h+='<div style="'+lbl+'">Rest alerts</div>';
+  h+='<div class="settings-row"><span class="settings-lbl">When rest ends</span><div class="sz-btns">'+[['sound','Sound'],['vibrate','Vibrate'],['silent','Silent'],['off','Off']].map(function(t){return '<button class="sz-btn'+(restAlertMode()===t[0]?' active':'')+'" onclick="setRestAlert(\''+t[0]+'\')">'+t[1]+'</button>';}).join('')+'</div></div>';
+  h+='<div class="walk-note">Sound plays a beep and buzzes. Vibrate only buzzes. Silent just shows the message. Off turns the alert and the rest notification off (the timer on screen still runs).</div>';
+  if(window.syncNotifSettings){
+    var _wOn=localStorage.getItem('pt_workout_notif')!=='0',_rOn=localStorage.getItem('pt_rem_on')==='1',_eOn=localStorage.getItem('pt_rem_eve')==='1';
+    var _ti='background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:6px 8px;font-size:14px;font-family:inherit';
+    h+='<div style="'+lbl+'">Workout notification</div><div class="pb-actions" style="margin-top:6px"><button class="'+(_wOn?'':'pb-quiet')+'" onclick="toggleNotifPref(\'pt_workout_notif\')">Show while I train: '+(_wOn?'on':'off')+'</button></div>';
+    h+='<div class="walk-note">While a workout is open, a notification shows your session time and how many sets you have done.</div>';
+    h+='<div style="'+lbl+'">Workout reminders</div><div class="pb-actions" style="margin-top:6px"><button class="'+(_rOn?'':'pb-quiet')+'" onclick="toggleReminders()">Reminders: '+(_rOn?'on':'off')+'</button></div>';
+    if(_rOn){
+      h+='<div class="settings-row"><span class="settings-lbl">Remind me at</span><input type="time" value="'+esc(localStorage.getItem('pt_rem_time')||'18:00')+'" onchange="setRemTime(\'pt_rem_time\',this.value)" style="'+_ti+'"></div>';
+      h+='<div class="pb-actions" style="margin-top:6px"><button class="'+(_eOn?'':'pb-quiet')+'" onclick="toggleEveNudge()">Evening nudge: '+(_eOn?'on':'off')+'</button></div>';
+      if(_eOn)h+='<div class="settings-row"><span class="settings-lbl">Nudge me at</span><input type="time" value="'+esc(localStorage.getItem('pt_rem_eve_time')||'20:30')+'" onchange="setRemTime(\'pt_rem_eve_time\',this.value)" style="'+_ti+'"></div>';
+    }
+    h+='<div class="walk-note">Reminders only come on training days and stop once you have logged that workout or skipped it. The evening nudge only appears if you have not trained yet.</div>';
+  }
   h+='<div style="'+lbl+'">Backup</div><div class="pb-actions" style="margin-top:6px"><button class="'+(localStorage.getItem('pt_autobackup')==='1'?'':'pb-quiet')+'" onclick="toggleAutoBackup()">Automatic backup: '+(localStorage.getItem('pt_autobackup')==='1'?'on':'off')+'</button></div>';
   h+='<div class="walk-note">When on, the app downloads one backup file to your phone after your first workout each day. A web app cannot save to Drive or the cloud by itself. '+(localStorage.getItem('pt_last_autobackup')?'Last automatic backup: '+esc(localStorage.getItem('pt_last_autobackup'))+'.':'No automatic backup yet.')+'</div>';
   h+='<div style="'+lbl+'">Your data</div><div class="pb-actions" style="margin-top:6px"><button class="pb-quiet" onclick="exportCsv()">Export CSV (spreadsheet)</button></div>';
@@ -5697,6 +5863,12 @@ function maybeAutoBackup(){
   if(localStorage.getItem('pt_last_autobackup')===today)return;
   try{exportData(true);localStorage.setItem('pt_last_autobackup',today);}catch(e){}
 }
+function syncNotifNow(){try{if(window.syncNotifSettings)window.syncNotifSettings();}catch(e){}}
+function setRestAlert(m){localStorage.setItem('pt_alert',m);syncNotifNow();refreshScreens();}
+function toggleNotifPref(k){if(localStorage.getItem(k)==='0')localStorage.removeItem(k);else localStorage.setItem(k,'0');syncNotifNow();refreshScreens();}
+function toggleReminders(){var on=localStorage.getItem('pt_rem_on')==='1';localStorage.setItem('pt_rem_on',on?'0':'1');if(!on&&window.askNotifPermission)window.askNotifPermission();syncNotifNow();refreshScreens();}
+function toggleEveNudge(){var on=localStorage.getItem('pt_rem_eve')==='1';localStorage.setItem('pt_rem_eve',on?'0':'1');syncNotifNow();refreshScreens();}
+function setRemTime(k,v){if(/^\d\d:\d\d$/.test(v)){localStorage.setItem(k,v);syncNotifNow();}}
 function toggleAutoRest(){if(localStorage.getItem('pt_autorest')==='0')localStorage.removeItem('pt_autorest');else localStorage.setItem('pt_autorest','0');refreshScreens();}
 // ── SHORT ON TIME: trim today's workout to the minutes you have ──
 var _trim=null,_qk=null;

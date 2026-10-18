@@ -56,19 +56,19 @@ if (fs.existsSync(stylesPath)) {
   else fs.writeFileSync(stylesPath, s2);
 }
 
-// 4. permissions: vibration for the rest timer, notifications + exact alarm for the rest-complete alert
+// 4. permissions: vibration for the rest timer, notifications + exact alarm for the rest-complete alert, foreground service for the shrinking bar
 const manPath = path.join(app, 'src', 'main', 'AndroidManifest.xml');
 let man = fs.readFileSync(manPath, 'utf8');
 must(man.includes('</manifest>'), 'AndroidManifest.xml has no </manifest>');
-for (const p of ['VIBRATE', 'POST_NOTIFICATIONS', 'USE_EXACT_ALARM']) {
+for (const p of ['VIBRATE', 'POST_NOTIFICATIONS', 'USE_EXACT_ALARM', 'FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_SPECIAL_USE']) {
   if (!man.includes(`android.permission.${p}"`)) man = man.replace('</manifest>', `    <uses-permission android:name="android.permission.${p}" />\n</manifest>`);
 }
 fs.writeFileSync(manPath, man);
 
-// 5. live rest-timer notification: native code (countdown notification, +30 s / Skip buttons, end-of-rest alarm)
+// 5. live rest-timer notification: native code (countdown notification with shrinking bar, +30 s / Skip buttons, end-of-rest alarm, workout notification)
 const pkgDir = path.join(app, 'src', 'main', 'java', 'com', 'program', 'protrain');
 must(fs.existsSync(path.join(pkgDir, 'MainActivity.java')), 'MainActivity.java not found in ' + pkgDir);
-for (const f of ['MainActivity.java', 'RestTimerCore.java', 'RestTimerPlugin.java', 'RestTimerReceiver.java']) {
+for (const f of ['MainActivity.java', 'RestTimerCore.java', 'RestTimerPlugin.java', 'RestTimerReceiver.java', 'RestTimerService.java']) {
   must(fs.existsSync(path.join(root, f)), f + ' is missing from the repo root');
   fs.copyFileSync(path.join(root, f), path.join(pkgDir, f));
 }
@@ -78,6 +78,12 @@ if (!man2.includes('RestTimerReceiver')) {
   man2 = man2.replace('</application>', '        <receiver android:name="com.program.protrain.RestTimerReceiver" android:exported="false" />\n    </application>');
   fs.writeFileSync(manPath, man2);
 }
+if (!man2.includes('RestTimerService')) {
+  man2 = fs.readFileSync(manPath, 'utf8');
+  must(man2.includes('</application>'), 'AndroidManifest.xml has no </application>');
+  man2 = man2.replace('</application>', '        <service android:name="com.program.protrain.RestTimerService" android:exported="false" android:foregroundServiceType="specialUse">\n            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Rest timer countdown notification that redraws once a second while a rest is running" />\n        </service>\n    </application>');
+  fs.writeFileSync(manPath, man2);
+}
 let gradle2 = fs.readFileSync(gradlePath, 'utf8');
 must(/dependencies\s*\{/.test(gradle2), 'no dependencies block in app/build.gradle');
 if (!gradle2.includes('androidx.core:core:')) {
@@ -85,4 +91,4 @@ if (!gradle2.includes('androidx.core:core:')) {
   fs.writeFileSync(gradlePath, gradle2);
 }
 
-console.log(`prepared: ${pkg.appVersion} (build ${buildNumber}), icons, permissions, rest-timer notification`);
+console.log(`prepared: ${pkg.appVersion} (build ${buildNumber}), icons, permissions, rest-timer notification and service`);

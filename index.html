@@ -8,8 +8,8 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <link rel="apple-touch-icon" href="icon-192.png"/>
-<title>ProTrain v8.2</title>
-<meta name="build-id" content="v8.2-463aaf64"/>
+<title>ProTrain v8.2.1</title>
+<meta name="build-id" content="v8.2.1-9c41e7d2"/>
 <link rel="manifest" href="manifest.json"/>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet"/>
 <style>
@@ -551,7 +551,7 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;disp
 .wucd-text{font-size:13px;color:var(--text);line-height:1.5;flex:1}
 .wucd-opt{font-size:11px;color:var(--muted);font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;text-transform:uppercase;padding:2px 6px;border-radius:4px;border:1px solid var(--border);margin-left:auto;flex-shrink:0;margin-top:2px}
 /* accessibility */
-button:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:2px solid #fbbf24;outline-offset:2px}
+button:focus,button:focus-visible,input:focus-visible,[tabindex]:focus,[tabindex]:focus-visible{outline:none}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
 
 .plan-banner{margin:10px 20px 0;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--morning);border-radius:12px}
@@ -671,7 +671,7 @@ select.pe-in{width:auto;max-width:140px}
 <!-- ONBOARDING -->
 <div class="ob-overlay" id="obOverlay">
   <div class="ob-logo">⚡</div>
-  <div class="ob-title">ProTrain Program <span style="font-size:14px;opacity:.6">v8.2</span></div>
+  <div class="ob-title">ProTrain Program <span style="font-size:14px;opacity:.6">v8.2.1</span></div>
   <div class="ob-sub">Your personal hypertrophy tracker.<br>Built around your home gym setup.</div>
   <div class="ob-section">
     <div class="ob-section-title">What is this split?</div>
@@ -733,7 +733,7 @@ select.pe-in{width:auto;max-width:140px}
 
 <script>
 'use strict';
-var BUILD_ID='v8.2-463aaf64',APP_VERSION='v8.2';
+var BUILD_ID='v8.2.1-9c41e7d2',APP_VERSION='v8.2.1';
 var EMOJI_WARM=["⏱", "⚖", "⚠", "⚡", "✅", "✈", "✏", "✨", "❌", "🌅", "🌱", "🎉", "🎯", "🏆", "🏋", "💧", "💪", "💯", "💾", "📅", "📈", "📊", "📋", "📖", "📝", "🔄", "🔍", "🔥", "🗑", "🗓", "😴", "🙃", "🚴", "🚶", "🤒", "🥇", "🥈", "🥉", "🦵", "🦾", "🧘", "🫧"];
 // Exercise ids are permanent keys (the day is looked up from the EX arrays, never parsed from the id).
 // If you ever must rename an id, add  oldId:'newId'  here and existing history follows it automatically.
@@ -742,6 +742,14 @@ var SCHED_REENTRY={0:null,1:'d1',2:null,3:'d2',4:'d3',5:null,6:'d4'};
 var SCHED_FULL={0:null,1:'d1',2:'d2',3:null,4:'d3',5:'d4',6:'d5'};
 var SCHED_PAUSED={0:null,1:null,2:null,3:null,4:null,5:null,6:null};
 function dnum(d){return Math.round(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())/864e5);}
+// the day the program began (set start date, else the first logged day); null when neither exists
+function programStartN(){
+  var st=localStorage.getItem('pt_program_start');
+  if(!st){try{var ks=Object.keys(load().logs).sort();st=ks[0]||null;}catch(e){st=null;}}
+  return st?dnum(new Date(st+'T00:00:00')):null;
+}
+// days before the program began are never "missed"
+function beforeStart(d){var s=programStartN();return s===null||dnum(d)<s;}
 function getPauses(){try{var a=JSON.parse(localStorage.getItem('pt_pauses')||'[]');return Array.isArray(a)?a:[];}catch(e){return[];}}
 function savePauses(a){localStorage.setItem('pt_pauses',JSON.stringify(a));}
 function pausedDaysBefore(d){
@@ -3234,9 +3242,10 @@ function _rToday(){
   h+='<div class="consist-right"><div class="consist-lbl">'+csLabel+'</div>';
   h+='<div class="consist-bar"><div class="consist-fill" style="width:'+cs+'%;background:'+csC+'"></div></div></div></div>';
   var prevWS=getMondayOf(t);prevWS.setDate(prevWS.getDate()-7);
-  var lwDone=0,lwVol=0;
-  for(var lwi=0;lwi<7;lwi++){var lwd=new Date(prevWS);lwd.setDate(prevWS.getDate()+lwi);var lwk=toKey(lwd);var lwlog=load().logs[lwk]||{};if(dayComplete(lwk,lwd))lwDone++;lwVol+=calcSessionVol(lwlog,'ppl');}
-  if(lwDone>0){
+  var lwDone=0,lwVol=0,lwReal=0;
+  for(var lwi=0;lwi<7;lwi++){var lwd=new Date(prevWS);lwd.setDate(prevWS.getDate()+lwi);var lwk=toKey(lwd);var lwlog=load().logs[lwk]||{};if(dayComplete(lwk,lwd))lwDone++;lwVol+=calcSessionVol(lwlog,'ppl');if(lwlog.ppl&&lwlog.ppl.done)lwReal++;}
+  var lwEnd=new Date(prevWS);lwEnd.setDate(prevWS.getDate()+6);
+  if(lwDone>0&&(lwReal>0||!beforeStart(lwEnd))){
     var lwCyc=getCyclingWeekStats(prevWS);
     var lwWalk=getWalkWeekStats(prevWS);
     h+='<div class="week-sum"><div class="week-sum-hdr">Last Week Recap</div><div class="week-sum-stats">';
@@ -3641,7 +3650,19 @@ var changelogOpen=false;
 function toggleChangelog(){changelogOpen=!changelogOpen;rProg();}
 function renderChangelog(){
   var entries=[
+    {ver:'v8.2.1',items:[
+      'Missed workouts no longer show days before your program start date',
+      'Removed the yellow box around the selected tab and buttons',
+      'The Guide can now log a workout: pick a date, tap Log, and it saves to that day like a normal session'
+    ]},
     {ver:'v8.2',items:[
+      'ProTrain is now an Android app: it installs like any other app, has its own icon and works offline',
+      'Backups and the CSV export open the Android share sheet so you can save them to Files or Drive; the automatic daily backup saves to Documents/ProTrain',
+      'Rest timer alerts are now real Android notifications, so they arrive even when the app is in the background',
+      'Fonts are built into the app, so text looks the same offline',
+      'Screens and inputs no longer scroll sideways on narrow phones'
+    ]},
+    {ver:'v8.1.1',items:[
       'Walk + jog: the Walking card switches between Walk and Walk + jog (jogging minutes count as active minutes and as leg load for recovery)',
       'Walks and jogs have Started and Ended times; the minutes fill in from them',
       'Fixed choosing a resistance band colour marking the whole exercise as done',
@@ -4244,7 +4265,7 @@ function rProg(){
   h+='</div>';
   h+='<div class="sec-title">Data</div>';
   h+='<div style="padding:0 20px 6px;display:flex;align-items:center;justify-content:space-between">';
-  h+='<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:11px;letter-spacing:2px;color:var(--muted);text-transform:uppercase">ProTrain Program <span style="color:var(--morning)">v8.2</span></span>';
+  h+='<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:11px;letter-spacing:2px;color:var(--muted);text-transform:uppercase">ProTrain Program <span style="color:var(--morning)">v8.2.1</span></span>';
   h+='<button onclick="toggleChangelog()" style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-family:\'Barlow Condensed\',sans-serif;letter-spacing:1px">📋 '+(changelogOpen?'Hide':'What&#39;s New')+'</button>';
   h+='</div>';
   if(changelogOpen)h+=renderChangelog();
@@ -4330,6 +4351,7 @@ function rGuide(){
   h+='<div class="prog-wrap"><div class="prog-lbl"><span>Session Progress</span><span>'+done+' / '+total+'</span></div>';
   h+='<div class="prog-bg"><div class="prog-fill" style="width:'+pct+'%;background:'+color+'"></div></div></div>';
 
+  h+=guideLogCard(color);
   // Search bar
   h+='<div class="search-wrap"><div class="search-wrap-rel">';
   h+='<span class="search-icon">🔍</span>';
@@ -4487,6 +4509,39 @@ function rGuide(){
   pendingVideoFetches.forEach(function(item){
     fetchExVideo(item.id,item.name,'vidg_'+item.id);
   });
+}
+// ── LOG FROM THE GUIDE: pick a date, then log the day you are looking at like normal ──
+var guideLogDate='';
+function guideLogCard(color){
+  var tk=toKey(now());
+  if(!guideLogDate||guideLogDate>tk)guideLogDate=tk;
+  var isM=guideDay==='morning';
+  var nm=isM?'Morning Routine':(PPL[guideDay]||{}).name;
+  var l=load().logs[guideLogDate]||{};
+  var ex=isM?l.morning:l.ppl;
+  var saved=!!(ex&&ex.exercises&&Object.keys(ex.exercises).length);
+  var clash=!isM&&l.ppl&&l.ppl.day&&l.ppl.day!==guideDay&&saved;
+  var h='<div class="plan-banner" style="margin:12px 20px 0;border-left-color:'+color+'">';
+  h+='<div class="pb-title">Log this workout</div>';
+  h+='<div class="pb-sub">Pick the day you trained, then enter your sets like normal. It saves to that date.</div>';
+  h+='<div class="pb-actions" style="margin-top:8px;align-items:center">';
+  h+='<input class="date-inp" type="date" max="'+tk+'" value="'+guideLogDate+'" onchange="guideLogSetDate(this.value)" aria-label="Workout date">';
+  h+='<button onclick="guideLogOpen()">'+(saved?'Edit ':'Log ')+esc(nm||'workout')+'</button></div>';
+  if(clash)h+='<div class="pb-sub" style="margin-top:8px;color:var(--danger)">'+esc(shortDate(guideLogDate))+' already has a different workout saved ('+esc((PPL[l.ppl.day]||{}).name||'workout')+'). Saving will replace it.</div>';
+  else if(saved)h+='<div class="pb-sub" style="margin-top:8px">'+esc(shortDate(guideLogDate))+' already has this saved. Tap to edit it.</div>';
+  return h+'</div>';
+}
+function guideLogSetDate(v){
+  if(!v)return;
+  if(v>toKey(now())){showToast('Pick today or an earlier date','var(--danger)');v=toKey(now());}
+  guideLogDate=v;rGuide();
+}
+function guideLogOpen(){
+  var k=guideLogDate||toKey(now());
+  if(k>toKey(now())){showToast('Pick today or an earlier date','var(--danger)');return;}
+  mMadeUpFor=null;
+  if(guideDay==='morning')openModal('morning',k);
+  else openModal('ppl',k,guideDay);
 }
 function guideSearch(val){
   guideSearchTerm=val;
@@ -5270,7 +5325,7 @@ function exportData(auto){
   var bands={},calib={};
   for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k&&k.startsWith('band_'))bands[k]=localStorage.getItem(k);if(k&&k.startsWith('pt_calib_'))calib[k]=localStorage.getItem(k);}
   data._meta={
-    version:'v8.2',
+    version:'v8.2.1',
     prCount:localStorage.getItem('ppl_pr_count4'),
     theme:localStorage.getItem('ppl_theme'),
     font:localStorage.getItem('ppl_font'),
@@ -5342,14 +5397,14 @@ function importData(e){
       }
       save(existing);
       var fileVer=parsed._meta&&parsed._meta.version;
-      var curVer='v8.2';
+      var curVer='v8.2.1';
       var themeChanged=parsed._meta&&parsed._meta.theme&&parsed._meta.theme!==localStorage.getItem('ppl_theme');
       var fontChanged=parsed._meta&&parsed._meta.font&&parsed._meta.font!==localStorage.getItem('ppl_font');
       var msg=document.getElementById('dataMsg');
       if(msg){msg.style.color='var(--success)';msg.textContent='Data imported! '+Object.keys(parsed.logs).length+' days loaded.';}
       if(!fileVer){
         showToast('No version tag — older backup. Exercise history may not match current exercises.','#f97316');
-      } else if(fileVer!==curVer){
+      } else if(fileVer.replace(/^(v\d+\.\d+).*$/,'$1')!==curVer.replace(/^(v\d+\.\d+).*$/,'$1')){
         showToast('Imported from '+fileVer+' — some fields may differ from '+curVer+'.','#f97316');
       }
       if(themeChanged||fontChanged)showToast('Theme/font preferences restored from backup.','var(--muted)');
@@ -5686,11 +5741,11 @@ function reviewData(ws,shallow){
     var d=new Date(ws);d.setDate(ws.getDate()+i);var k=toKey(d);keys.push(k);
     var past=dnum(d)<dnum(today),future=dnum(d)>dnum(today),l=logs[k]||{},pd=pplDay(d);
     if(i===6&&!future)r.complete=true;
-    if(pd&&!future)r.planned++;
+    if(pd&&!future&&!beforeStart(d))r.planned++;
     if(l.ppl&&l.ppl.done){
       r.done++;if(l.ppl.madeUpFor)r.madeUp++;if(l.ppl.trimmed)r.short++;
       r.sessions.push({key:k,day:l.ppl.day||pd,madeUpFor:l.ppl.madeUpFor||null,trimmed:l.ppl.trimmed||null});
-    }else if(pd&&past){
+    }else if(pd&&past&&!beforeStart(d)){
       if(l.skip&&l.skip.madeUp){}
       else if(l.skip)r.skipped.push({key:k,reason:l.skip.reason,note:l.skip.note||''});
       else r.missed.push(k);
@@ -5906,6 +5961,7 @@ function missedList(){
   var t=now(),rows=[];
   for(var i=0;i<=7;i++){
     var d=new Date(t);d.setDate(t.getDate()-i);var k=toKey(d),pd=pplDay(d);if(!pd)continue;
+    if(beforeStart(d))continue;
     var l=load().logs[k]||{};
     if(l.ppl&&l.ppl.done)continue;
     if(l.skip&&l.skip.madeUp)continue;

@@ -1,6 +1,6 @@
 {
   "name": "protrain",
-  "version": "8.2.0",
+  "version": "8.2.1",
   "private": true,
   "description": "ProTrain: personal PPL workout tracker (Android app)",
   "scripts": {
@@ -19,5 +19,5 @@
   "devDependencies": {
     "@capacitor/cli": "^7.0.0"
   },
-  "appVersion": "8.2"
+  "appVersion": "8.2.1"
 }

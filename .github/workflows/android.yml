@@ -64,7 +64,7 @@ jobs:
       - name: Sign with your key
         if: env.KEYSTORE_B64 != ''
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          VERSION=$(node -p "require('./package.json').appVersion")
           ALIAS="${KEY_ALIAS:-protrain}"
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           echo "$KEYSTORE_B64" | base64 -d > protrain-release.p12
@@ -78,7 +78,7 @@ jobs:
       - name: Use the debug-signed APK
         if: env.KEYSTORE_B64 == ''
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          VERSION=$(node -p "require('./package.json').appVersion")
           cp android/app/build/outputs/apk/debug/app-debug.apk "ProTrain-$VERSION-debug.apk"
           echo "APK_PATH=ProTrain-$VERSION-debug.apk" >> "$GITHUB_ENV"
           echo "No signing key set, so this is a debug build. A later build will NOT install over it (uninstall first)." >> "$GITHUB_STEP_SUMMARY"

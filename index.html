@@ -516,9 +516,11 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;disp
 .popped{animation:pop .25s ease forwards}
 
 /* REST TIMER */
-.rest-timer-float{position:sticky;top:0;z-index:10;background:var(--surface);border-bottom:2px solid var(--accent);padding:10px 20px;display:none;align-items:center;gap:12px}
+.rest-timer-float{position:sticky;top:0;z-index:10;background:var(--surface);border-bottom:3px solid var(--border);padding:10px 20px;display:none;align-items:center;gap:12px;box-shadow:0 6px 14px rgba(0,0,0,.35)}
+.rt-line{position:absolute;left:0;right:0;bottom:-3px;height:3px;background:var(--accent);transform-origin:left center;transform:scaleX(1);will-change:transform}
+.extmr-float .rt-line{background:var(--legs)}
+.rt-line.low{background:var(--danger)}
 .rest-timer-float.active{display:flex}
-.extmr-float{border-bottom-color:var(--legs)}
 .extmr-float .rt-countdown{color:var(--legs)}
 .rt-countdown{font-family:'Barlow Condensed',sans-serif;font-size:36px;font-weight:800;color:var(--accent);min-width:64px;line-height:1}
 .rt-label{font-size:12px;color:var(--muted);flex:1;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px}
@@ -588,6 +590,13 @@ select.pe-in{width:auto;max-width:140px}
 .set-type.t-warmup{color:#f59e0b;border-color:#f59e0b}
 .set-type.t-drop{color:#38bdf8;border-color:#38bdf8}
 .set-type.t-failure{color:#f87171;border-color:#f87171}
+.tag-note{margin:10px 20px 0;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;font-size:12px;line-height:1.5;color:var(--muted)}
+.tag-note summary{cursor:pointer;font-weight:600;color:var(--text)}
+.tag-note>div{margin-top:6px}
+.tag-note .tn{display:inline-block;width:20px;height:20px;line-height:18px;text-align:center;border-radius:50%;border:1px solid var(--border);font-size:11px;margin-right:6px}
+.tag-note .tn.w{color:#f59e0b;border-color:#f59e0b}
+.tag-note .tn.d{color:#38bdf8;border-color:#38bdf8}
+.tag-note .tn.f{color:#f87171;border-color:#f87171}
 .set-x{width:24px;height:24px;margin-left:4px;border:none;background:none;color:var(--muted);font-size:18px;padding:0}
 .ss-badge{font-size:11px;color:var(--morning);margin-top:2px}
 .pe-ctl button.pe-on{border-color:var(--morning);color:var(--morning)}
@@ -634,7 +643,8 @@ select.pe-in{width:auto;max-width:140px}
 .set-type{flex:0 0 26px}
 .set-x{flex:0 0 24px}
 .sinput-lbl{flex:0 0 28px}
-#mBody,.screen{overflow-x:hidden}
+#mBody{overflow-x:clip}
+.screen{overflow-x:hidden}
 @keyframes toastin{from{transform:translateX(-50%) translateY(100%)}to{transform:translateX(-50%) translateY(0)}}
 .toast{animation:toastin .3s ease;max-width:calc(100% - 24px);white-space:normal;text-align:center}
 .cyc-fields{flex-wrap:wrap}
@@ -2857,6 +2867,22 @@ function fmtRestTime(s){
   var m=Math.floor(s/60);var r=s%60;
   return m>0?m+':'+(r<10?'0':'')+r:s+'s';
 }
+// the line under a timer shrinks smoothly to zero: one CSS animation per run, restarted only if the end time changes
+function driveLine(id,end,totalSecs,on){
+  var ln=document.getElementById(id);if(!ln)return;
+  if(!on){ln.style.transition='none';ln.style.transform='scaleX(1)';ln.removeAttribute('data-end');ln.classList.remove('low');return;}
+  var msLeft=Math.max(0,end-Date.now());
+  if(ln.getAttribute('data-end')!==String(end)){
+    ln.setAttribute('data-end',String(end));
+    ln.style.transition='none';
+    ln.style.transform='scaleX('+Math.min(1,msLeft/(totalSecs*1000))+')';
+    void ln.offsetWidth;
+    ln.style.transition='transform '+msLeft+'ms linear';
+    ln.style.transform='scaleX(0)';
+  }
+  ln.classList.toggle('low',msLeft<=10000);
+}
+var restTotalSecs=0;
 function updateRestDisplay(){
   var el=document.getElementById('restTimerFloat');
   if(!el)return;
@@ -2864,6 +2890,7 @@ function updateRestDisplay(){
     el.classList.add('active');
     var cd=document.getElementById('rtCountdown');
     if(cd)cd.textContent=fmtRestTime(restRemaining);
+    driveLine('rtLine',restEndTimestamp,restTotalSecs||restRemaining,true);
     // update the active rest button
     if(restExId!=null&&restSetIdx!=null){
       var btn=document.getElementById('restbtn_'+restExId+'_'+restSetIdx);
@@ -2871,6 +2898,7 @@ function updateRestDisplay(){
     }
   } else {
     el.classList.remove('active');
+    driveLine('rtLine',0,1,false);
   }
 }
 function tickRest(){
@@ -2891,6 +2919,19 @@ function tickRest(){
     },100);
   }
 }
+// what the out-of-app notification says (exercise, which set just finished, when the next one is due)
+function restNotifyMeta(exId,setIdx){
+  var nm='',n=0,k=setIdx+1;
+  try{var info=resolveExById(exId);nm=(info&&info.name)||'';n=(mState[exId]&&mState[exId].sets.length)||0;}catch(e){}
+  var last=n>0&&k>=n;
+  return{
+    title:'Rest'+(nm?' \u00b7 '+nm:''),
+    prefix:last?'Last set done':(n>0?'Set '+k+' of '+n+' done':'Set '+k+' done'),
+    nextLabel:last?'Next up at':'Next set at',
+    doneTitle:'Rest complete',
+    doneText:last?'Ready for the next exercise.':(nm&&n>0?nm+', set '+(k+1)+' of '+n+'. Go.':'Time for your next set.')
+  };
+}
 function startRestTimer(exId,setIdx,secs){
   if(restInterval){clearInterval(restInterval);restInterval=null;}
   // reset old button
@@ -2898,10 +2939,10 @@ function startRestTimer(exId,setIdx,secs){
     var oldBtn=document.getElementById('restbtn_'+restExId+'_'+restSetIdx);
     if(oldBtn){oldBtn.classList.remove('active');oldBtn.innerHTML='&#9203;';}
   }
-  restExId=exId;restSetIdx=setIdx;restRemaining=secs;
+  restExId=exId;restSetIdx=setIdx;restRemaining=secs;restTotalSecs=secs;
   restEndTimestamp=Date.now()+secs*1000;
   if(navigator.vibrate)navigator.vibrate(200);
-  scheduleRestNotification(restEndTimestamp);
+  scheduleRestNotification(restEndTimestamp,restNotifyMeta(exId,setIdx));
   var btn=document.getElementById('restbtn_'+exId+'_'+setIdx);
   if(btn)btn.classList.add('active');
   updateRestDisplay();
@@ -2938,12 +2979,14 @@ function updateExTmrDisplay(){
   var el=document.getElementById('exTimerFloat');
   if(exTmrExId==null){
     if(el)el.classList.remove('active');
+    driveLine('exTmrLine',0,1,false);
     return;
   }
   if(el){
     el.classList.add('active');
     var cd=document.getElementById('exTmrCountdown');
     if(cd)cd.textContent=exTmrRemaining+'s';
+    driveLine('exTmrLine',exTmrEnd,exTmrTarget||exTmrRemaining,true);
   }
   var btn=document.getElementById('extmrbtn_'+exTmrExId+'_'+exTmrSetIdx);
   if(btn)btn.textContent=exTmrRemaining;
@@ -3653,7 +3696,12 @@ function renderChangelog(){
     {ver:'v8.2.1',items:[
       'Missed workouts no longer show days before your program start date',
       'Removed the yellow box around the selected tab and buttons',
-      'The Guide can now log a workout: pick a date, tap Log, and it saves to that day like a normal session'
+      'The Guide can now log a workout: pick a date, tap Log, and it saves to that day like a normal session',
+      'Logging a workout from the Guide also counts as making up an earlier missed workout of the same type; the Guide tells you which one before you start',
+      'The rest timer now stays pinned at the top of the log sheet while you scroll',
+      'The line under the rest and hold timers shrinks as time runs out and turns red for the last 10 seconds',
+      'Rest timer notification: when you leave the app during a rest, a live countdown stays in your notifications with the exercise, the time your next set is due, and +30 s and Skip rest buttons. A louder alert pops up when rest ends',
+      'Added a short note explaining the W, D and F set tags (tap the circle next to a set to cycle them)'
     ]},
     {ver:'v8.2',items:[
       'ProTrain is now an Android app: it installs like any other app, has its own icon and works offline',
@@ -4352,6 +4400,7 @@ function rGuide(){
   h+='<div class="prog-bg"><div class="prog-fill" style="width:'+pct+'%;background:'+color+'"></div></div></div>';
 
   h+=guideLogCard(color);
+  if(guideDay!=='morning')h+=setTagNote();
   // Search bar
   h+='<div class="search-wrap"><div class="search-wrap-rel">';
   h+='<span class="search-icon">🔍</span>';
@@ -4521,6 +4570,7 @@ function guideLogCard(color){
   var ex=isM?l.morning:l.ppl;
   var saved=!!(ex&&ex.exercises&&Object.keys(ex.exercises).length);
   var clash=!isM&&l.ppl&&l.ppl.day&&l.ppl.day!==guideDay&&saved;
+  var mk=isM?null:guideMakeUpTarget();
   var h='<div class="plan-banner" style="margin:12px 20px 0;border-left-color:'+color+'">';
   h+='<div class="pb-title">Log this workout</div>';
   h+='<div class="pb-sub">Pick the day you trained, then enter your sets like normal. It saves to that date.</div>';
@@ -4529,7 +4579,17 @@ function guideLogCard(color){
   h+='<button onclick="guideLogOpen()">'+(saved?'Edit ':'Log ')+esc(nm||'workout')+'</button></div>';
   if(clash)h+='<div class="pb-sub" style="margin-top:8px;color:var(--danger)">'+esc(shortDate(guideLogDate))+' already has a different workout saved ('+esc((PPL[l.ppl.day]||{}).name||'workout')+'). Saving will replace it.</div>';
   else if(saved)h+='<div class="pb-sub" style="margin-top:8px">'+esc(shortDate(guideLogDate))+' already has this saved. Tap to edit it.</div>';
+  if(mk)h+='<div class="pb-sub" style="margin-top:8px;color:var(--success)">Finishing this counts as making up your missed '+esc((PPL[guideDay]||{}).name||'workout')+' on '+esc(shortDate(mk))+'.</div>';
   return h+'</div>';
+}
+// the oldest missed workout of this type that came before the chosen date (and is not already made up)
+function guideMakeUpTarget(){
+  if(guideDay==='morning')return null;
+  var best=null;
+  missedList().forEach(function(r){
+    if(r.ago>0&&r.day===guideDay&&r.key<guideLogDate&&(!best||r.key<best))best=r.key;
+  });
+  return best;
 }
 function guideLogSetDate(v){
   if(!v)return;
@@ -4541,7 +4601,7 @@ function guideLogOpen(){
   if(k>toKey(now())){showToast('Pick today or an earlier date','var(--danger)');return;}
   mMadeUpFor=null;
   if(guideDay==='morning')openModal('morning',k);
-  else openModal('ppl',k,guideDay);
+  else{mMadeUpFor=guideMakeUpTarget();openModal('ppl',k,guideDay);}
 }
 function guideSearch(val){
   guideSearchTerm=val;
@@ -4684,12 +4744,13 @@ function buildModal(exList,type){
   h+='<div class="rt-countdown" id="rtCountdown">0s</div>';
   h+='<div class="rt-label">Rest<br><span style="font-size:11px;opacity:.6">Tap timer btn again to stop</span></div>';
   h+='<button class="rt-stop" onclick="stopRestTimer()">Stop</button>';
-  h+='</div>';
+  h+='<div class="rt-line" id="rtLine"></div></div>';
   h+='<div class="rest-timer-float extmr-float" id="exTimerFloat">';
   h+='<div class="rt-countdown" id="exTmrCountdown">0s</div>';
   h+='<div class="rt-label" id="exTmrLabel">Timing hold<br><span style="font-size:11px;opacity:.6">Tap Stop when you\'re done</span></div>';
   h+='<button class="rt-stop" onclick="stopExTmrEarly()">Stop</button>';
-  h+='</div>';
+  h+='<div class="rt-line" id="exTmrLine"></div></div>';
+  if(type==='ppl')h+=setTagNote();
   // ── Warm-up section (PPL days only) ──
   var pd2=null;
   if(mType==='ppl'&&mKey){try{var d2t=new Date(mKey+'T00:00:00');pd2=mDay||pplDay(d2t);}catch(e){}}
@@ -5055,6 +5116,15 @@ function togSet(id,si,btn){
     var lexDiv=mainChk&&mainChk.closest?mainChk.closest('.lex'):null;
     if(lexDiv){lexDiv.classList.add('flash-done');setTimeout(function(){lexDiv.classList.remove('flash-done');},600);}
   }
+}
+// explains the little W / D / F circle next to each set
+function setTagNote(){
+  return '<details class="tag-note"><summary>What do W, D and F mean?</summary>'
+    +'<div>Tap the circle next to a set to tag it. It cycles through four states:</div>'
+    +'<div><b class="tn w">W</b> Warm-up: a lighter set to prepare. It does not count toward volume, records, or finishing the exercise, and it does not start the rest timer.</div>'
+    +'<div><b class="tn d">D</b> Drop set: an extra set right after your last one, at a lighter weight. It counts toward volume and sets per muscle, but it is optional and not needed to finish the exercise.</div>'
+    +'<div><b class="tn f">F</b> To failure: a normal set that you took until you could not do another rep. It counts like any other set.</div>'
+    +'<div>The plain dot means a normal set.</div></details>';
 }
 function setTypeBtn(id,si,s){
   var t=s.type||'',L={'':'\u00b7',warmup:'W',drop:'D',failure:'F'}[t]||'\u00b7';

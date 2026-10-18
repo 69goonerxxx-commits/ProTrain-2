@@ -68,7 +68,7 @@
   // ── Rest timer notification: a live countdown (native) with +30 s and Skip rest buttons, shown for the whole rest ──
   // Works in the app and out of it. If the native piece is missing, it falls back to a plain "Rest complete" alert.
   var NOTIF_ID=4201,pendingEnd=0,active=true,channelReady=false,restMeta=null,pollT=null,warned={};
-  var RT=(C&&C.registerPlugin)?C.registerPlugin('RestTimer'):null;
+  var RT=P.RestTimer||((C&&typeof C.registerPlugin==='function')?C.registerPlugin('RestTimer'):null);
   function warnOnce(key,msg){if(warned[key])return;warned[key]=1;toast(msg,'var(--muted)');}
   function ensureChannel(){
     if(channelReady||!LN||!LN.createChannel)return Promise.resolve();
@@ -147,6 +147,7 @@
     function msg(e){return String((e&&e.message)||e);}
     function show(){try{alert(lines.join('\n'));}catch(e){toast(lines.join(' | '),'var(--muted)');}}
     lines.push('Timer plugin: '+(RT?'found':'MISSING'));
+    if(!RT)lines.push('Plugins this build knows: '+Object.keys(P).join(', '));
     lines.push('Local notifications plugin: '+(LN?'found':'MISSING'));
     var perm=LN?LN.checkPermissions().then(function(p){
       lines.push('Permission: '+p.display);

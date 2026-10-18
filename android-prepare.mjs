@@ -65,4 +65,24 @@ for (const p of ['VIBRATE', 'POST_NOTIFICATIONS', 'USE_EXACT_ALARM']) {
 }
 fs.writeFileSync(manPath, man);
 
-console.log(`prepared: ${pkg.appVersion} (build ${buildNumber}), icons, permissions`);
+// 5. live rest-timer notification: native code (countdown notification, +30 s / Skip buttons, end-of-rest alarm)
+const pkgDir = path.join(app, 'src', 'main', 'java', 'com', 'program', 'protrain');
+must(fs.existsSync(path.join(pkgDir, 'MainActivity.java')), 'MainActivity.java not found in ' + pkgDir);
+for (const f of ['MainActivity.java', 'RestTimerCore.java', 'RestTimerPlugin.java', 'RestTimerReceiver.java']) {
+  must(fs.existsSync(path.join(root, f)), f + ' is missing from the repo root');
+  fs.copyFileSync(path.join(root, f), path.join(pkgDir, f));
+}
+let man2 = fs.readFileSync(manPath, 'utf8');
+must(man2.includes('</application>'), 'AndroidManifest.xml has no </application>');
+if (!man2.includes('RestTimerReceiver')) {
+  man2 = man2.replace('</application>', '        <receiver android:name="com.program.protrain.RestTimerReceiver" android:exported="false" />\n    </application>');
+  fs.writeFileSync(manPath, man2);
+}
+let gradle2 = fs.readFileSync(gradlePath, 'utf8');
+must(/dependencies\s*\{/.test(gradle2), 'no dependencies block in app/build.gradle');
+if (!gradle2.includes('androidx.core:core:')) {
+  gradle2 = gradle2.replace(/dependencies\s*\{/, 'dependencies {\n    implementation "androidx.core:core:1.13.1"');
+  fs.writeFileSync(gradlePath, gradle2);
+}
+
+console.log(`prepared: ${pkg.appVersion} (build ${buildNumber}), icons, permissions, rest-timer notification`);

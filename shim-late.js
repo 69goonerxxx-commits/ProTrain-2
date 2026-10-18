@@ -65,9 +65,11 @@
     return origClick.apply(this,arguments);
   };
 
-  // ── Rest-timer alert: WebView has no web Notification, so schedule a native one ──
-  // Matches the original behaviour: only alert when the app is in the background (the in-app beep covers the foreground).
-  var NOTIF_ID=4201,pendingEnd=0,active=true,channelReady=false;
+  // ── Rest timer outside the app: a live countdown notification (native), with +30 s and Skip rest buttons ──
+  // Only shown while the app is in the background; the in-app timer covers the foreground.
+  // If the native piece is missing, it falls back to a plain "Rest complete" alert.
+  var NOTIF_ID=4201,pendingEnd=0,active=true,channelReady=false,notifOK=false,restMeta=null;
+  var RT=(C&&C.registerPlugin)?C.registerPlugin('RestTimer'):null;
   function ensureChannel(){
     if(channelReady||!LN||!LN.createChannel)return Promise.resolve();
     channelReady=true;
@@ -81,22 +83,53 @@
       return LN.schedule({notifications:[{id:NOTIF_ID,title:'Rest complete',body:'Time for your next set.',channelId:'rest',schedule:{at:new Date(end),allowWhileIdle:true}}]});
     }).catch(function(){});
   }
-  window.scheduleRestNotification=function(end){
-    pendingEnd=end;nativeCancel();
+  function bgStart(){
+    if(!notifOK||pendingEnd<=Date.now())return;
+    var m=restMeta||{};
+    if(!RT){nativeSchedule();return;}
+    RT.start({
+      endMs:pendingEnd,
+      totalMs:(window.restTotalSecs||0)*1000,
+      title:m.title||'Rest',
+      prefix:m.prefix||'',
+      nextLabel:m.nextLabel||'Next set at',
+      doneTitle:m.doneTitle||'Rest complete',
+      doneText:m.doneText||'Time for your next set.'
+    }).catch(function(){nativeSchedule();});
+  }
+  // back in the app: pick up anything done with the notification buttons, then remove the notification
+  function resumeSync(){
+    nativeCancel();
+    if(!RT)return;
+    RT.getState().then(function(s){
+      try{
+        if(!s||!window.restInterval)return;
+        if(s.skipped){stopRestTimer();}
+        else if(s.active&&s.endMs&&s.endMs!==pendingEnd){
+          pendingEnd=s.endMs;window.restEndTimestamp=s.endMs;
+          window.restTotalSecs=Math.max(window.restTotalSecs||0,Math.round((s.totalMs||0)/1000));
+          tickRest();
+        }
+      }catch(e){}
+    }).catch(function(){}).then(function(){try{RT.clear();}catch(e){}});
+  }
+  window.scheduleRestNotification=function(end,meta){
+    pendingEnd=end;restMeta=meta||null;nativeCancel();
     if(!LN||end<=Date.now())return;
     LN.checkPermissions().then(function(p){
       if(p.display==='prompt'||p.display==='prompt-with-rationale')return LN.requestPermissions();
       return p;
     }).then(function(p){
-      if(p&&p.display==='granted'&&!active)nativeSchedule();
+      notifOK=!!(p&&p.display==='granted');
+      if(notifOK&&!active)bgStart();
     }).catch(function(){});
   };
-  window.cancelRestNotification=function(){pendingEnd=0;nativeCancel();};
+  window.cancelRestNotification=function(){pendingEnd=0;nativeCancel();if(RT){try{RT.clear();}catch(e){}}};
   function setActive(a){
     if(a===active)return;
     active=a;
-    if(!a&&pendingEnd>Date.now())nativeSchedule();
-    if(a)nativeCancel();
+    if(!a&&pendingEnd>Date.now())bgStart();
+    if(a)resumeSync();
   }
   document.addEventListener('visibilitychange',function(){setActive(document.visibilityState!=='hidden');});
   if(APP&&APP.addListener){try{APP.addListener('appStateChange',function(s){setActive(!!s.isActive);});}catch(e){}}

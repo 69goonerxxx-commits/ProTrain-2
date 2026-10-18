@@ -250,18 +250,40 @@
       return remChannel().then(function(){return LN.schedule({notifications:list});});
     }).catch(function(){});
   };
+  // ── Home-screen widget: send the next 8 days of the plan, today's done state and the streak ──
+  window.pushWidgetData=function(){
+    if(!RT||!RT.setWidget)return;
+    try{
+      var base=new Date();base.setHours(0,0,0,0);
+      var paused=false;try{paused=isPlanPaused();}catch(e){}
+      var days=[];
+      for(var i=0;i<8;i++){
+        var d=new Date(base);d.setDate(base.getDate()+i);
+        var key=toKey(d),day=pplDay(d),rest=!day||isRest(d)||paused||beforeStart(d);
+        var t=paused?'Plan paused':(!day||isRest(d))?'Rest day':beforeStart(d)?'Not started yet':((DAY_SUBTITLES&&DAY_SUBTITLES[day])||'Workout');
+        days.push({k:key,t:t,r:rest?1:0,d:(!rest&&dayComplete(key,d))?1:0});
+      }
+      var st=0;try{st=calcStreak().streak||0;}catch(e){}
+      RT.setWidget({days:days,streak:st,asOf:toKey(new Date())}).catch(function(){});
+    }catch(e){}
+  };
+  var wgT=null;
+  window.scheduleWidgetPush=function(){clearTimeout(wgT);wgT=setTimeout(function(){try{window.pushWidgetData();}catch(e){}},700);};
   // a saved workout cancels today's reminders; opening the app tops the two-week window back up
   var origSaveSession=window.saveSession;
   if(typeof origSaveSession==='function'){
     window.saveSession=function(){
       var r=origSaveSession.apply(this,arguments);
       setTimeout(function(){try{window.syncWorkoutReminders();}catch(e){}},800);
+      try{window.scheduleWidgetPush();}catch(e){}
       return r;
     };
   }
   setTimeout(function(){try{window.syncNotifSettings();}catch(e){}},1500);
+  setTimeout(function(){try{window.scheduleWidgetPush();}catch(e){}},2200);
   document.addEventListener('visibilitychange',function(){
     if(document.visibilityState==='visible'){try{window.syncWorkoutReminders();}catch(e){}}
+    try{window.scheduleWidgetPush();}catch(e){}
   });
 
   document.addEventListener('visibilitychange',function(){setActive(document.visibilityState!=='hidden');});

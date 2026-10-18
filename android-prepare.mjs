@@ -68,7 +68,7 @@ fs.writeFileSync(manPath, man);
 // 5. live rest-timer notification: native code (countdown notification with shrinking bar, +30 s / Skip buttons, end-of-rest alarm, workout notification)
 const pkgDir = path.join(app, 'src', 'main', 'java', 'com', 'program', 'protrain');
 must(fs.existsSync(path.join(pkgDir, 'MainActivity.java')), 'MainActivity.java not found in ' + pkgDir);
-for (const f of ['MainActivity.java', 'RestTimerCore.java', 'RestTimerPlugin.java', 'RestTimerReceiver.java', 'RestTimerService.java']) {
+for (const f of ['MainActivity.java', 'RestTimerCore.java', 'RestTimerPlugin.java', 'RestTimerReceiver.java', 'RestTimerService.java', 'ProTrainWidget.java']) {
   must(fs.existsSync(path.join(root, f)), f + ' is missing from the repo root');
   fs.copyFileSync(path.join(root, f), path.join(pkgDir, f));
 }
@@ -84,6 +84,92 @@ if (!man2.includes('RestTimerService')) {
   man2 = man2.replace('</application>', '        <service android:name="com.program.protrain.RestTimerService" android:exported="false" android:foregroundServiceType="specialUse">\n            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Rest timer countdown notification that redraws once a second while a rest is running" />\n        </service>\n    </application>');
   fs.writeFileSync(manPath, man2);
 }
+// 6. home-screen widget: layout, size/update settings, background shape and the receiver entry
+fs.mkdirSync(path.join(res, 'layout'), { recursive: true });
+fs.mkdirSync(path.join(res, 'xml'), { recursive: true });
+fs.mkdirSync(path.join(res, 'drawable'), { recursive: true });
+fs.writeFileSync(path.join(res, 'drawable', 'protrain_widget_bg.xml'),
+  `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#FF14141A" />
+    <corners android:radius="20dp" />
+    <stroke android:width="1dp" android:color="#FF2A2A33" />
+</shape>
+`);
+fs.writeFileSync(path.join(res, 'layout', 'protrain_widget.xml'),
+  `<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/pt_w_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center_vertical"
+    android:padding="14dp"
+    android:background="@drawable/protrain_widget_bg">
+    <TextView
+        android:id="@+id/pt_w_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="TODAY"
+        android:textColor="#FFF5A623"
+        android:textSize="11sp"
+        android:textStyle="bold" />
+    <TextView
+        android:id="@+id/pt_w_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:maxLines="2"
+        android:ellipsize="end"
+        android:text="ProTrain"
+        android:textColor="#FFFFFFFF"
+        android:textSize="20sp"
+        android:textStyle="bold" />
+    <TextView
+        android:id="@+id/pt_w_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:singleLine="true"
+        android:text=""
+        android:textColor="#FFB4B4BE"
+        android:textSize="13sp" />
+    <TextView
+        android:id="@+id/pt_w_streak"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:singleLine="true"
+        android:text=""
+        android:textColor="#FFF5A623"
+        android:textSize="13sp"
+        android:textStyle="bold" />
+</LinearLayout>
+`);
+fs.writeFileSync(path.join(res, 'xml', 'protrain_widget_info.xml'),
+  `<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="180dp"
+    android:minHeight="110dp"
+    android:updatePeriodMillis="1800000"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:initialLayout="@layout/protrain_widget" />
+`);
+{
+  let m3 = fs.readFileSync(manPath, 'utf8');
+  must(m3.includes('</application>'), 'AndroidManifest.xml has no </application>');
+  if (!m3.includes('ProTrainWidget')) {
+    m3 = m3.replace('</application>', `        <receiver android:name="com.program.protrain.ProTrainWidget" android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/protrain_widget_info" />
+        </receiver>
+    </application>`);
+    fs.writeFileSync(manPath, m3);
+  }
+}
 let gradle2 = fs.readFileSync(gradlePath, 'utf8');
 must(/dependencies\s*\{/.test(gradle2), 'no dependencies block in app/build.gradle');
 if (!gradle2.includes('androidx.core:core:')) {
@@ -91,4 +177,4 @@ if (!gradle2.includes('androidx.core:core:')) {
   fs.writeFileSync(gradlePath, gradle2);
 }
 
-console.log(`prepared: ${pkg.appVersion} (build ${buildNumber}), icons, permissions, rest-timer notification and service`);
+console.log(`prepared: ${pkg.appVersion} (build ${buildNumber}), icons, permissions, rest-timer notification and service, home-screen widget`);

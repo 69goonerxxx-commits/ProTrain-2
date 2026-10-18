@@ -71,6 +71,13 @@ public class RestTimerPlugin extends Plugin {
     call.resolve();
   }
 
+  // today's plan, done state and streak for the home-screen widget
+  @PluginMethod
+  public void setWidget(PluginCall call) {
+    ProTrainWidget.save(getContext(), call.getData().toString());
+    call.resolve();
+  }
+
   @PluginMethod
   public void workoutEnd(PluginCall call) {
     RestTimerCore.endWorkout(getContext());

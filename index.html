@@ -8,8 +8,8 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <link rel="apple-touch-icon" href="icon-192.png"/>
-<title>ProTrain v8.2.1</title>
-<meta name="build-id" content="v8.2.1-9c41e7d2"/>
+<title>ProTrain v8.2.2</title>
+<meta name="build-id" content="v8.2.2-5e03b8a7"/>
 <link rel="manifest" href="manifest.json"/>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet"/>
 <style>
@@ -689,7 +689,7 @@ select.pe-in{width:auto;max-width:140px}
 <!-- ONBOARDING -->
 <div class="ob-overlay" id="obOverlay">
   <div class="ob-logo">⚡</div>
-  <div class="ob-title">ProTrain Program <span style="font-size:14px;opacity:.6">v8.2.1</span></div>
+  <div class="ob-title">ProTrain Program <span style="font-size:14px;opacity:.6">v8.2.2</span></div>
   <div class="ob-sub">Your personal hypertrophy tracker.<br>Built around your home gym setup.</div>
   <div class="ob-section">
     <div class="ob-section-title">What is this split?</div>
@@ -752,7 +752,7 @@ select.pe-in{width:auto;max-width:140px}
 
 <script>
 'use strict';
-var BUILD_ID='v8.2.1-9c41e7d2',APP_VERSION='v8.2.1';
+var BUILD_ID='v8.2.2-5e03b8a7',APP_VERSION='v8.2.2';
 var EMOJI_WARM=["⏱", "⚖", "⚠", "⚡", "✅", "✈", "✏", "✨", "❌", "🌅", "🌱", "🎉", "🎯", "🏆", "🏋", "💧", "💪", "💯", "💾", "📅", "📈", "📊", "📋", "📖", "📝", "🔄", "🔍", "🔥", "🗑", "🗓", "😴", "🙃", "🚴", "🚶", "🤒", "🥇", "🥈", "🥉", "🦵", "🦾", "🧘", "🫧"];
 // Exercise ids are permanent keys (the day is looked up from the EX arrays, never parsed from the id).
 // If you ever must rename an id, add  oldId:'newId'  here and existing history follows it automatically.
@@ -3895,6 +3895,9 @@ var changelogOpen=false;
 function toggleChangelog(){changelogOpen=!changelogOpen;rProg();}
 function renderChangelog(){
   var entries=[
+    {ver:'v8.2.2',items:[
+      'Home-screen widget (Android app): shows today\'s workout, whether it is done, and your streak. Long-press your home screen, choose Widgets, then ProTrain. Tap it to open the app',
+    ]},
     {ver:'v8.2.1',items:[
       'Rest notification: the bar under the countdown now shrinks as your rest runs down (Android app)',
       'Rest notification and alert now show what is next, for example "Next: 12 reps at 40 kg"',
@@ -4463,7 +4466,7 @@ function rProg(){
   h+='</div>';
   h+='<div class="sec-title">Data</div>';
   h+='<div style="padding:0 20px 6px;display:flex;align-items:center;justify-content:space-between">';
-  h+='<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:11px;letter-spacing:2px;color:var(--muted);text-transform:uppercase">ProTrain Program <span style="color:var(--morning)">v8.2.1</span></span>';
+  h+='<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:11px;letter-spacing:2px;color:var(--muted);text-transform:uppercase">ProTrain Program <span style="color:var(--morning)">v8.2.2</span></span>';
   h+='<button onclick="toggleChangelog()" style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-family:\'Barlow Condensed\',sans-serif;letter-spacing:1px">📋 '+(changelogOpen?'Hide':'What&#39;s New')+'</button>';
   h+='</div>';
   if(changelogOpen)h+=renderChangelog();
@@ -5569,7 +5572,7 @@ function exportData(auto){
   var bands={},calib={};
   for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k&&k.startsWith('band_'))bands[k]=localStorage.getItem(k);if(k&&k.startsWith('pt_calib_'))calib[k]=localStorage.getItem(k);}
   data._meta={
-    version:'v8.2.1',
+    version:'v8.2.2',
     prCount:localStorage.getItem('ppl_pr_count4'),
     theme:localStorage.getItem('ppl_theme'),
     font:localStorage.getItem('ppl_font'),
@@ -5641,7 +5644,7 @@ function importData(e){
       }
       save(existing);
       var fileVer=parsed._meta&&parsed._meta.version;
-      var curVer='v8.2.1';
+      var curVer='v8.2.2';
       var themeChanged=parsed._meta&&parsed._meta.theme&&parsed._meta.theme!==localStorage.getItem('ppl_theme');
       var fontChanged=parsed._meta&&parsed._meta.font&&parsed._meta.font!==localStorage.getItem('ppl_font');
       var msg=document.getElementById('dataMsg');
@@ -5805,6 +5808,7 @@ function renderTrainingSettings(){
       if(_eOn)h+='<div class="settings-row"><span class="settings-lbl">Nudge me at</span><input type="time" value="'+esc(localStorage.getItem('pt_rem_eve_time')||'20:30')+'" onchange="setRemTime(\'pt_rem_eve_time\',this.value)" style="'+_ti+'"></div>';
     }
     h+='<div class="walk-note">Reminders only come on training days and stop once you have logged that workout or skipped it. The evening nudge only appears if you have not trained yet.</div>';
+    h+='<div style="'+lbl+'">Home-screen widget</div><div class="walk-note">Long-press your home screen, choose Widgets, then ProTrain. It shows today\'s workout, whether it is done and your streak, and updates whenever you open the app or save a workout.</div>';
   }
   h+='<div style="'+lbl+'">Backup</div><div class="pb-actions" style="margin-top:6px"><button class="'+(localStorage.getItem('pt_autobackup')==='1'?'':'pb-quiet')+'" onclick="toggleAutoBackup()">Automatic backup: '+(localStorage.getItem('pt_autobackup')==='1'?'on':'off')+'</button></div>';
   h+='<div class="walk-note">When on, the app downloads one backup file to your phone after your first workout each day. A web app cannot save to Drive or the cloud by itself. '+(localStorage.getItem('pt_last_autobackup')?'Last automatic backup: '+esc(localStorage.getItem('pt_last_autobackup'))+'.':'No automatic backup yet.')+'</div>';

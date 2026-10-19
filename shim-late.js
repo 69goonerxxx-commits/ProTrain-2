@@ -256,15 +256,29 @@
     try{
       var base=new Date();base.setHours(0,0,0,0);
       var paused=false;try{paused=isPlanPaused();}catch(e){}
-      var days=[];
-      for(var i=0;i<8;i++){
-        var d=new Date(base);d.setDate(base.getDate()+i);
+      var customs=[];try{customs=loadCustomExercises();}catch(e){}
+      function entry(d,full){
         var key=toKey(d),day=pplDay(d),rest=!day||isRest(d)||paused||beforeStart(d);
-        var t=paused?'Plan paused':(!day||isRest(d))?'Rest day':beforeStart(d)?'Not started yet':((DAY_SUBTITLES&&DAY_SUBTITLES[day])||'Workout');
-        days.push({k:key,t:t,r:rest?1:0,d:(!rest&&dayComplete(key,d))?1:0});
+        var o={k:key,r:rest?1:0,d:(!rest&&dayComplete(key,d))?1:0};
+        if(full){
+          o.t=paused?'Plan paused':(!day||isRest(d))?'Rest day':beforeStart(d)?'Not started yet':((DAY_SUBTITLES&&DAY_SUBTITLES[day])||'Workout');
+          if(day){
+            o.n=((EX&&EX[day])||[]).length+customs.filter(function(c){return c.day===day;}).length;
+            o.c=(DAY_COLORS&&DAY_COLORS[day])||'#F5A623';
+          }
+        }
+        return o;
       }
+      var days=[];
+      for(var i=0;i<8;i++){var d=new Date(base);d.setDate(base.getDate()+i);days.push(entry(d,true));}
+      // this week, Monday to Sunday (includes the days already gone)
+      var mon=new Date(base);mon.setDate(base.getDate()-((base.getDay()+6)%7));
+      var week=[];
+      for(var j=0;j<7;j++){var w=new Date(mon);w.setDate(mon.getDate()+j);week.push(entry(w,false));}
       var st=0;try{st=calcStreak().streak||0;}catch(e){}
-      RT.setWidget({days:days,streak:st,asOf:toKey(new Date())}).catch(function(){});
+      var style=localStorage.getItem('pt_widget_style');
+      if(style!=='b'&&style!=='c'&&style!=='d')style='a';
+      RT.setWidget({days:days,week:week,streak:st,asOf:toKey(new Date()),style:style}).catch(function(){});
     }catch(e){}
   };
   var wgT=null;

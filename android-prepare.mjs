@@ -84,46 +84,143 @@ if (!man2.includes('RestTimerService')) {
   man2 = man2.replace('</application>', '        <service android:name="com.program.protrain.RestTimerService" android:exported="false" android:foregroundServiceType="specialUse">\n            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Rest timer countdown notification that redraws once a second while a rest is running" />\n        </service>\n    </application>');
   fs.writeFileSync(manPath, man2);
 }
-// 6. home-screen widget: layout, size/update settings, background shape and the receiver entry
-fs.mkdirSync(path.join(res, 'layout'), { recursive: true });
-fs.mkdirSync(path.join(res, 'xml'), { recursive: true });
-fs.mkdirSync(path.join(res, 'drawable'), { recursive: true });
-fs.writeFileSync(path.join(res, 'drawable', 'protrain_widget_bg.xml'),
-  `<?xml version="1.0" encoding="utf-8"?>
+// 6. home-screen widget: four looks (layouts, shapes), size/update settings and the receiver entry
+const widgetRes = {
+  "drawable/protrain_widget_bg.xml": `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
     <solid android:color="#FF14141A" />
-    <corners android:radius="20dp" />
+    <corners android:radius="22dp" />
     <stroke android:width="1dp" android:color="#FF2A2A33" />
 </shape>
-`);
-fs.writeFileSync(path.join(res, 'layout', 'protrain_widget.xml'),
-  `<?xml version="1.0" encoding="utf-8"?>
+`,
+  "drawable/protrain_chip.xml": `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#FF2A2314" />
+    <corners android:radius="12dp" />
+</shape>
+`,
+  "drawable/protrain_chip_dark.xml": `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#241A1A1F" />
+    <corners android:radius="12dp" />
+</shape>
+`,
+  "drawable/protrain_round.xml": `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#FFFFFFFF" />
+    <corners android:radius="22dp" />
+</shape>
+`,
+  "drawable/protrain_seg.xml": `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#FFFFFFFF" />
+    <corners android:radius="3dp" />
+</shape>
+`,
+  "drawable/protrain_dot.xml": `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="#FFFFFFFF" />
+</shape>
+`,
+  "drawable/protrain_dot_ring.xml": `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="#00000000" />
+    <stroke android:width="2dp" android:color="#FFFFFFFF" />
+</shape>
+`,
+  "drawable/protrain_check_dark.xml": `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="#FF1A1A1F" />
+</shape>
+`,
+  "drawable/protrain_pill_start.xml": `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#FFF5A623" />
+    <corners android:radius="16dp" />
+</shape>
+`,
+  "drawable/protrain_pill_done.xml": `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#00000000" />
+    <corners android:radius="16dp" />
+    <stroke android:width="1dp" android:color="#FF5DCAA5" />
+</shape>
+`,
+  "drawable/protrain_ring_orange.xml": `<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@android:id/background">
+        <shape android:shape="ring" android:innerRadiusRatio="2.7" android:thicknessRatio="10" android:useLevel="false">
+            <solid android:color="#FF2E2E38" />
+        </shape>
+    </item>
+    <item android:id="@android:id/progress">
+        <shape android:shape="ring" android:innerRadiusRatio="2.7" android:thicknessRatio="10" android:useLevel="true">
+            <solid android:color="#FFF5A623" />
+        </shape>
+    </item>
+</layer-list>
+`,
+  "drawable/protrain_ring_green.xml": `<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@android:id/background">
+        <shape android:shape="ring" android:innerRadiusRatio="2.7" android:thicknessRatio="10" android:useLevel="false">
+            <solid android:color="#FF2E2E38" />
+        </shape>
+    </item>
+    <item android:id="@android:id/progress">
+        <shape android:shape="ring" android:innerRadiusRatio="2.7" android:thicknessRatio="10" android:useLevel="true">
+            <solid android:color="#FF5DCAA5" />
+        </shape>
+    </item>
+</layer-list>
+`,
+  "layout/protrain_widget.xml": `<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/pt_w_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:gravity="center_vertical"
     android:padding="14dp"
     android:background="@drawable/protrain_widget_bg">
-    <TextView
-        android:id="@+id/pt_w_label"
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="TODAY"
-        android:textColor="#FFF5A623"
-        android:textSize="11sp"
-        android:textStyle="bold" />
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+        <TextView
+            android:id="@+id/pt_w_label"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="TODAY"
+            android:textColor="#FFF5A623"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.12" />
+        <TextView
+            android:id="@+id/pt_w_streak"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/protrain_chip"
+            android:paddingLeft="9dp"
+            android:paddingRight="9dp"
+            android:paddingTop="3dp"
+            android:paddingBottom="3dp"
+            android:text=""
+            android:textColor="#FFF5A623"
+            android:textSize="12sp" />
+    </LinearLayout>
     <TextView
         android:id="@+id/pt_w_title"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="bottom"
         android:maxLines="2"
         android:ellipsize="end"
         android:text="ProTrain"
         android:textColor="#FFFFFFFF"
-        android:textSize="20sp"
+        android:textSize="22sp"
         android:textStyle="bold" />
     <TextView
         android:id="@+id/pt_w_status"
@@ -134,28 +231,480 @@ fs.writeFileSync(path.join(res, 'layout', 'protrain_widget.xml'),
         android:text=""
         android:textColor="#FFB4B4BE"
         android:textSize="13sp" />
-    <TextView
-        android:id="@+id/pt_w_streak"
+</LinearLayout>
+`,
+  "layout/protrain_widget_b.xml": `<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/pt_b_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+    <ImageView
+        android:id="@+id/pt_b_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="fitXY"
+        android:src="@drawable/protrain_round" />
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="14dp">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:id="@+id/pt_b_top"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:singleLine="true"
+                android:text=""
+                android:textColor="#FF1A1A1F"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+            <TextView
+                android:id="@+id/pt_b_streak"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/protrain_chip_dark"
+                android:paddingLeft="9dp"
+                android:paddingRight="9dp"
+                android:paddingTop="3dp"
+                android:paddingBottom="3dp"
+                android:text=""
+                android:textColor="#FF1A1A1F"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:id="@+id/pt_b_check"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginRight="10dp"
+                android:background="@drawable/protrain_check_dark"
+                android:gravity="center"
+                android:text="✓"
+                android:textColor="#FFFFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+            <TextView
+                android:id="@+id/pt_b_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:maxLines="2"
+                android:ellipsize="end"
+                android:text="ProTrain"
+                android:textColor="#FF1A1A1F"
+                android:textSize="26sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="horizontal">
+            <ImageView
+                android:id="@+id/pt_b_s0"
+                android:layout_width="0dp"
+                android:layout_height="6dp"
+                android:layout_weight="1"
+                android:layout_marginRight="4dp"
+                android:scaleType="fitXY"
+                android:src="@drawable/protrain_seg" />
+            <ImageView
+                android:id="@+id/pt_b_s1"
+                android:layout_width="0dp"
+                android:layout_height="6dp"
+                android:layout_weight="1"
+                android:layout_marginRight="4dp"
+                android:scaleType="fitXY"
+                android:src="@drawable/protrain_seg" />
+            <ImageView
+                android:id="@+id/pt_b_s2"
+                android:layout_width="0dp"
+                android:layout_height="6dp"
+                android:layout_weight="1"
+                android:layout_marginRight="4dp"
+                android:scaleType="fitXY"
+                android:src="@drawable/protrain_seg" />
+            <ImageView
+                android:id="@+id/pt_b_s3"
+                android:layout_width="0dp"
+                android:layout_height="6dp"
+                android:layout_weight="1"
+                android:layout_marginRight="4dp"
+                android:scaleType="fitXY"
+                android:src="@drawable/protrain_seg" />
+            <ImageView
+                android:id="@+id/pt_b_s4"
+                android:layout_width="0dp"
+                android:layout_height="6dp"
+                android:layout_weight="1"
+                android:layout_marginRight="4dp"
+                android:scaleType="fitXY"
+                android:src="@drawable/protrain_seg" />
+            <ImageView
+                android:id="@+id/pt_b_s5"
+                android:layout_width="0dp"
+                android:layout_height="6dp"
+                android:layout_weight="1"
+                android:layout_marginRight="4dp"
+                android:scaleType="fitXY"
+                android:src="@drawable/protrain_seg" />
+            <ImageView
+                android:id="@+id/pt_b_s6"
+                android:layout_width="0dp"
+                android:layout_height="6dp"
+                android:layout_weight="1"
+                android:layout_marginRight="4dp"
+                android:scaleType="fitXY"
+                android:src="@drawable/protrain_seg" />
+            </LinearLayout>
+            <TextView
+                android:id="@+id/pt_b_week"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="6dp"
+                android:singleLine="true"
+                android:text=""
+                android:textColor="#FF3A3A42"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>
+`,
+  "layout/protrain_widget_c.xml": `<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/pt_c_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="14dp"
+    android:background="@drawable/protrain_widget_bg">
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+        <TextView
+            android:id="@+id/pt_c_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:singleLine="true"
+            android:text="ProTrain"
+            android:textColor="#FFFFFFFF"
+            android:textSize="19sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/pt_c_streak"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="8dp"
+            android:singleLine="true"
+            android:text=""
+            android:textColor="#FFF5A623"
+            android:textSize="12sp" />
+    </LinearLayout>
+    <TextView
+        android:id="@+id/pt_c_status"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:singleLine="true"
         android:text=""
-        android:textColor="#FFF5A623"
-        android:textSize="13sp"
-        android:textStyle="bold" />
+        android:textColor="#FFB4B4BE"
+        android:textSize="12sp" />
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center_horizontal">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="M"
+                android:textColor="#FFB4B4BE"
+                android:textSize="11sp" />
+            <ImageView
+                android:id="@+id/pt_c_d0"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_marginTop="4dp"
+                android:src="@drawable/protrain_dot" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center_horizontal">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="T"
+                android:textColor="#FFB4B4BE"
+                android:textSize="11sp" />
+            <ImageView
+                android:id="@+id/pt_c_d1"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_marginTop="4dp"
+                android:src="@drawable/protrain_dot" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center_horizontal">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="W"
+                android:textColor="#FFB4B4BE"
+                android:textSize="11sp" />
+            <ImageView
+                android:id="@+id/pt_c_d2"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_marginTop="4dp"
+                android:src="@drawable/protrain_dot" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center_horizontal">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="T"
+                android:textColor="#FFB4B4BE"
+                android:textSize="11sp" />
+            <ImageView
+                android:id="@+id/pt_c_d3"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_marginTop="4dp"
+                android:src="@drawable/protrain_dot" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center_horizontal">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="F"
+                android:textColor="#FFB4B4BE"
+                android:textSize="11sp" />
+            <ImageView
+                android:id="@+id/pt_c_d4"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_marginTop="4dp"
+                android:src="@drawable/protrain_dot" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center_horizontal">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="S"
+                android:textColor="#FFB4B4BE"
+                android:textSize="11sp" />
+            <ImageView
+                android:id="@+id/pt_c_d5"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_marginTop="4dp"
+                android:src="@drawable/protrain_dot" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center_horizontal">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="S"
+                android:textColor="#FFB4B4BE"
+                android:textSize="11sp" />
+            <ImageView
+                android:id="@+id/pt_c_d6"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_marginTop="4dp"
+                android:src="@drawable/protrain_dot" />
+        </LinearLayout>
+    </LinearLayout>
 </LinearLayout>
-`);
-fs.writeFileSync(path.join(res, 'xml', 'protrain_widget_info.xml'),
-  `<?xml version="1.0" encoding="utf-8"?>
+`,
+  "layout/protrain_widget_d.xml": `<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/pt_d_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:padding="12dp"
+    android:background="@drawable/protrain_widget_bg">
+    <FrameLayout
+        android:layout_width="76dp"
+        android:layout_height="76dp">
+        <ProgressBar
+            android:id="@+id/pt_d_ring_o"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="76dp"
+            android:layout_height="76dp"
+            android:rotation="-90"
+            android:indeterminate="false"
+            android:max="5"
+            android:progress="0"
+            android:progressDrawable="@drawable/protrain_ring_orange" />
+        <ProgressBar
+            android:id="@+id/pt_d_ring_g"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="76dp"
+            android:layout_height="76dp"
+            android:rotation="-90"
+            android:indeterminate="false"
+            android:max="5"
+            android:progress="0"
+            android:visibility="gone"
+            android:progressDrawable="@drawable/protrain_ring_green" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:gravity="center">
+            <TextView
+                android:id="@+id/pt_d_num"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="-"
+                android:textColor="#FFFFFFFF"
+                android:textSize="24sp"
+                android:textStyle="bold" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="streak"
+                android:textColor="#FFB4B4BE"
+                android:textSize="11sp" />
+        </LinearLayout>
+    </FrameLayout>
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginLeft="14dp"
+        android:orientation="vertical">
+        <TextView
+            android:id="@+id/pt_d_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:singleLine="true"
+            android:text="TODAY"
+            android:textColor="#FFB4B4BE"
+            android:textSize="11sp"
+            android:letterSpacing="0.1" />
+        <TextView
+            android:id="@+id/pt_d_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:singleLine="true"
+            android:text="ProTrain"
+            android:textColor="#FFFFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/pt_d_week"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="6dp"
+            android:singleLine="true"
+            android:text=""
+            android:textColor="#FFB4B4BE"
+            android:textSize="12sp" />
+        <TextView
+            android:id="@+id/pt_d_start"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/protrain_pill_start"
+            android:paddingLeft="14dp"
+            android:paddingRight="14dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
+            android:text="Start"
+            android:textColor="#FF1A1A1F"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/pt_d_done"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/protrain_pill_done"
+            android:paddingLeft="14dp"
+            android:paddingRight="14dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
+            android:visibility="gone"
+            android:text="Done ✓"
+            android:textColor="#FF5DCAA5"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+</LinearLayout>
+`,
+  "xml/protrain_widget_info.xml": `<?xml version="1.0" encoding="utf-8"?>
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:minWidth="180dp"
+    android:minWidth="250dp"
     android:minHeight="110dp"
+    android:minResizeWidth="180dp"
+    android:minResizeHeight="90dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
     android:updatePeriodMillis="1800000"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
     android:initialLayout="@layout/protrain_widget" />
-`);
+`,
+};
+for (const [rel, text] of Object.entries(widgetRes)) {
+  const out = path.join(res, rel);
+  fs.mkdirSync(path.dirname(out), { recursive: true });
+  fs.writeFileSync(out, text);
+}
 {
   let m3 = fs.readFileSync(manPath, 'utf8');
   must(m3.includes('</application>'), 'AndroidManifest.xml has no </application>');

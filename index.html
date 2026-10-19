@@ -3896,7 +3896,10 @@ function toggleChangelog(){changelogOpen=!changelogOpen;rProg();}
 function renderChangelog(){
   var entries=[
     {ver:'v8.2.2',items:[
-      'Home-screen widget (Android app): shows today\'s workout, whether it is done, and your streak. Long-press your home screen, choose Widgets, then ProTrain. Tap it to open the app',
+      'Guide search: typing no longer closes and reopens the keyboard, and deleting a letter works smoothly',
+      'Guide search: now also finds alternative exercises and the exercise you swapped in, and shows where else a match appears (other days, alternatives, same muscles)',
+      'Guide search: ticking an exercise while a search is active now ticks the right exercise',
+      'Home-screen widget (Android app): shows today\'s workout, whether it is done, your streak and this week\'s sessions, in four styles you pick in Settings (Clean, Colour, Week, Ring). Long-press your home screen, choose Widgets, then ProTrain. Tap it to open the app',
     ]},
     {ver:'v8.2.1',items:[
       'Rest notification: the bar under the countdown now shrinks as your rest runs down (Android app)',
@@ -4533,7 +4536,46 @@ function rExChart(){
 }
 
 // ── GUIDE ──────────────────────────────────────────────────────
-function rGuide(){
+// ── GUIDE SEARCH: matches names, alternatives, the swapped-in exercise and primary muscles ──
+function guideNorm(t){return String(t==null?'':t).toLowerCase().replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();}
+function guideMatch(ex,q){
+  if(!q)return {hit:true,rank:0};
+  var words=q.split(' ');
+  function all(h){h=' '+guideNorm(h);return words.every(function(w){return h.indexOf(' '+w)>=0;});}
+  if(all(ex.name))return {hit:true,via:'name',rank:0};
+  var sw=getSwappedExercise(ex.id);
+  if(sw&&sw.name&&all(sw.name))return {hit:true,via:'swap',alt:sw.name,rank:1};
+  var subs=SUBS[ex.id]||[];
+  for(var i=0;i<subs.length;i++){if(all(subs[i].name))return {hit:true,via:'alt',alt:subs[i].name,rank:2};}
+  if(ex.muscles&&ex.muscles.primary&&all(ex.muscles.primary))return {hit:true,via:'muscle',rank:3};
+  return {hit:false,rank:9};
+}
+function guideElsewhere(qn){
+  var keys=['morning','d1','d2','d3','d4','d5'].filter(function(k){return k!==guideDay;});
+  var cs=loadCustomExercises(),rows=[];
+  keys.forEach(function(k){
+    var list=(EX[k]||[]).concat(cs.filter(function(c){return c.day===k;})),hits=[];
+    list.forEach(function(ex){var m=guideMatch(ex,qn);if(m.hit)hits.push({ex:ex,m:m});});
+    hits.sort(function(a,b){return a.m.rank-b.m.rank;});
+    if(hits.length)rows.push({k:k,hits:hits});
+  });
+  if(!rows.length)return '';
+  var h='<div class="simple-item" style="flex-direction:column;align-items:stretch;gap:2px;margin-top:14px"><div style="font-family:\'Barlow Condensed\',sans-serif;font-size:11px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Also in other days</div>';
+  rows.forEach(function(r){
+    var c=DAY_COLORS[r.k]||'#fbbf24',nm=r.k==='morning'?'Morning':(DAY_SUBTITLES[r.k]||DAY_LABELS[r.k]);
+    r.hits.slice(0,4).forEach(function(x){
+      var note=x.m.via==='alt'?'Alternative: '+x.m.alt:x.m.via==='swap'?'Swapped in: '+x.m.alt:x.m.via==='muscle'?'Same muscles':'';
+      h+='<div onclick="guideJump(\''+r.k+'\')" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border);cursor:pointer"><div style="min-width:0"><div style="font-size:13px">'+esc(x.ex.name)+'</div>'+(note?'<div style="font-size:11px;color:var(--muted)">'+esc(note)+'</div>':'')+'</div><div style="font-size:11px;color:'+c+';white-space:nowrap;font-family:\'Barlow Condensed\',sans-serif;letter-spacing:1px">'+esc(DAY_LABELS[r.k])+' &#8250;</div></div>';
+    });
+    if(r.hits.length>4)h+='<div style="font-size:11px;color:var(--muted);padding-bottom:4px">+'+(r.hits.length-4)+' more on '+esc(nm)+'</div>';
+  });
+  return h+'</div>';
+}
+function guideJump(k){
+  guideDay=k;guideSec='exercises';openCards={};rGuide();
+  try{document.getElementById('guideSearchInp').scrollIntoView({block:'start'});}catch(e){}
+}
+function rGuide(listOnly){
   var pendingVideoFetches=[];
   var dayKeys=['morning','d1','d2','d3','d4','d5'];
   var color=DAY_COLORS[guideDay]||'#fbbf24';
@@ -4557,7 +4599,7 @@ function rGuide(){
   // Search bar
   h+='<div class="search-wrap"><div class="search-wrap-rel">';
   h+='<span class="search-icon">🔍</span>';
-  h+='<input class="search-inp" type="text" placeholder="Search exercises..." value="'+guideSearchTerm+'" oninput="guideSearch(this.value)" id="guideSearchInp">';
+  h+='<input class="search-inp" type="text" placeholder="Search exercises, alternatives, muscles..." autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" value="'+esc(guideSearchTerm)+'" oninput="guideSearch(this.value)" id="guideSearchInp">';
   h+='</div></div>';
   h+='<div class="day-tabs">';
   dayKeys.forEach(function(k){
@@ -4579,8 +4621,13 @@ function rGuide(){
 
   if(guideSec==='exercises'){
     var rawList=EX[guideDay].concat(loadCustomExercises().filter(function(ex){return ex.day===guideDay;}));
-    var exList=guideSearchTerm?rawList.filter(function(ex){return ex.name.toLowerCase().includes(guideSearchTerm.toLowerCase());}):rawList;
-    exList.forEach(function(ex,i){
+    var qn=guideNorm(guideSearchTerm),exHits=[];
+    // i stays the exercise's real position in the day, so ticks and open cards still hit the right exercise while searching
+    rawList.forEach(function(ex,i){var m=guideMatch(ex,qn);if(m.hit)exHits.push({ex:ex,i:i,m:m});});
+    if(qn)exHits.sort(function(a,b){return (a.m.rank-b.m.rank)||(a.i-b.i);});
+    if(qn&&!exHits.length)h+='<div class="simple-note">Nothing on this day matches "'+esc(guideSearchTerm)+'".</div>';
+    exHits.forEach(function(hit){
+      var ex=hit.ex,i=hit.i,mm=hit.m;
       var isOpen=!!openCards[guideDay+'_'+i];
       var isChecked=!!checks[guideDay+'_exercises_'+i];
       var gswap=getSwappedExercise(ex.id);
@@ -4589,6 +4636,8 @@ function rGuide(){
       h+='<div class="gcard-hdr" onclick="toggleGCard('+i+')">';
       h+='<button class="gchk'+(isChecked?' done':'')+'" onclick="event.stopPropagation();toggleGCheck('+i+',this)">&#10003;</button>';
       h+='<div class="gcard-info"><div class="gcard-name">'+ex.name+'</div>';
+      if(qn&&mm.via==='alt')h+='<div style="font-size:11px;color:var(--accent);font-family:\'Barlow Condensed\',sans-serif;letter-spacing:1px;margin-bottom:2px">Alternative: '+esc(mm.alt)+'</div>';
+      else if(qn&&mm.via==='muscle')h+='<div style="font-size:11px;color:var(--muted);font-family:\'Barlow Condensed\',sans-serif;letter-spacing:1px;margin-bottom:2px">Same muscles: '+esc(ex.muscles.primary)+'</div>';
       if(gswap)h+='<div style="font-size:11px;color:var(--legs);font-family:\'Barlow Condensed\',sans-serif;letter-spacing:1px;margin-bottom:2px">🔄 '+gswap.name+'</div>';
       // Pull-up progression hint
       if(ex.id==='d1_pul'||ex.id==='d4_pul'){
@@ -4645,6 +4694,7 @@ function rGuide(){
       }
       h+='</div>';
     });
+    if(qn)h+=guideElsewhere(qn);
   } else if(guideSec==='rules'){
     h+='<div class="simple-item" style="flex-direction:column;align-items:flex-start;gap:6px;border-color:var(--border)">';
     h+='<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:11px;letter-spacing:3px;text-transform:uppercase;color:var(--muted)">The Golden Rule</div>';
@@ -4707,6 +4757,16 @@ function rGuide(){
   h+='<div class="rl-row"><span class="rl-lbl">Heavy strength (1-5 rep)</span><span class="rl-time" style="color:var(--push)">3-5 min</span></div></div>';
   h+='<button class="reset-btn" onclick="resetGuideChecks()">&#8635; Reset Session Checks</button>';
 
+  if(listOnly===true){
+    // typing in the search box: swap only the list, so the box (and the keyboard) is left alone
+    var tmpG=document.createElement('div');tmpG.innerHTML=h;
+    var newC=tmpG.querySelector('.guide-content'),oldC=document.querySelector('#sc-guide .guide-content');
+    if(newC&&oldC){
+      oldC.innerHTML=newC.innerHTML;
+      pendingVideoFetches.forEach(function(item){fetchExVideo(item.id,item.name,'vidg_'+item.id);});
+      return;
+    }
+  }
   document.getElementById('sc-guide').innerHTML=h;
   pendingVideoFetches.forEach(function(item){
     fetchExVideo(item.id,item.name,'vidg_'+item.id);
@@ -4758,11 +4818,14 @@ function guideLogOpen(){
 }
 function guideSearch(val){
   guideSearchTerm=val;
-  guideSec='exercises';
-  rGuide();
-  // Re-focus search input
-  var el=document.getElementById('guideSearchInp');
-  if(el)setTimeout(function(){el.focus();el.setSelectionRange(el.value.length,el.value.length);},50);
+  if(guideSec!=='exercises'){
+    // coming from another tab (warm-up, rules...): one full render, then put the cursor back
+    guideSec='exercises';rGuide();
+    var el=document.getElementById('guideSearchInp');
+    if(el){el.focus();try{el.setSelectionRange(el.value.length,el.value.length);}catch(e){}}
+    return;
+  }
+  rGuide(true);
 }
 function switchGuideDay(day){guideDay=day;guideSec='exercises';openCards={};rGuide();}
 function switchGuideSec(sec){guideSec=sec;rGuide();}
@@ -5808,7 +5871,10 @@ function renderTrainingSettings(){
       if(_eOn)h+='<div class="settings-row"><span class="settings-lbl">Nudge me at</span><input type="time" value="'+esc(localStorage.getItem('pt_rem_eve_time')||'20:30')+'" onchange="setRemTime(\'pt_rem_eve_time\',this.value)" style="'+_ti+'"></div>';
     }
     h+='<div class="walk-note">Reminders only come on training days and stop once you have logged that workout or skipped it. The evening nudge only appears if you have not trained yet.</div>';
-    h+='<div style="'+lbl+'">Home-screen widget</div><div class="walk-note">Long-press your home screen, choose Widgets, then ProTrain. It shows today\'s workout, whether it is done and your streak, and updates whenever you open the app or save a workout.</div>';
+    var _ws=localStorage.getItem('pt_widget_style');if(_ws!=='b'&&_ws!=='c'&&_ws!=='d')_ws='a';
+    h+='<div style="'+lbl+'">Home-screen widget</div>';
+    h+='<div class="settings-row"><span class="settings-lbl">Style</span><div class="sz-btns">'+[['a','Clean'],['b','Colour'],['c','Week'],['d','Ring']].map(function(t){return '<button class="sz-btn'+(_ws===t[0]?' active':'')+'" onclick="setWidgetStyle(\''+t[0]+'\')">'+t[1]+'</button>';}).join('')+'</div></div>';
+    h+='<div class="walk-note">Long-press your home screen, choose Widgets, then ProTrain. Clean is a simple card, Colour takes the colour of the day, Week shows your seven days, and Ring puts your streak in a ring that fills as the week goes. The style applies to every ProTrain widget and updates whenever you open the app or save a workout.</div>';
   }
   h+='<div style="'+lbl+'">Backup</div><div class="pb-actions" style="margin-top:6px"><button class="'+(localStorage.getItem('pt_autobackup')==='1'?'':'pb-quiet')+'" onclick="toggleAutoBackup()">Automatic backup: '+(localStorage.getItem('pt_autobackup')==='1'?'on':'off')+'</button></div>';
   h+='<div class="walk-note">When on, the app downloads one backup file to your phone after your first workout each day. A web app cannot save to Drive or the cloud by itself. '+(localStorage.getItem('pt_last_autobackup')?'Last automatic backup: '+esc(localStorage.getItem('pt_last_autobackup'))+'.':'No automatic backup yet.')+'</div>';
@@ -5868,6 +5934,7 @@ function maybeAutoBackup(){
   try{exportData(true);localStorage.setItem('pt_last_autobackup',today);}catch(e){}
 }
 function syncNotifNow(){try{if(window.syncNotifSettings)window.syncNotifSettings();}catch(e){}}
+function setWidgetStyle(k){localStorage.setItem('pt_widget_style',k);try{if(window.scheduleWidgetPush)window.scheduleWidgetPush();}catch(e){}refreshScreens();}
 function setRestAlert(m){localStorage.setItem('pt_alert',m);syncNotifNow();refreshScreens();}
 function toggleNotifPref(k){if(localStorage.getItem(k)==='0')localStorage.removeItem(k);else localStorage.setItem(k,'0');syncNotifNow();refreshScreens();}
 function toggleReminders(){var on=localStorage.getItem('pt_rem_on')==='1';localStorage.setItem('pt_rem_on',on?'0':'1');if(!on&&window.askNotifPermission)window.askNotifPermission();syncNotifNow();refreshScreens();}
